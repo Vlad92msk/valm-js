@@ -1,6 +1,6 @@
 {
   "name": "valm-root",
-  "private": true,
+  "private": false,
   "workspaces": [
     "packages/*"
   ],
