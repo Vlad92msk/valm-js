@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 100" fill="none">
+  <defs>
+    <linearGradient id="g" x1="0" y1="100" x2="120" y2="0" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#22d3ee"/>
+      <stop offset="100%" stop-color="#8b5cf6"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Camera body -->
+  <rect x="4" y="17" width="80" height="66" rx="16" fill="url(#g)"/>
+
+  <!-- Camera viewfinder: overlaps body to close gap, rounded tip -->
+  <path d="M70 33 L70 67 L104 57 Q114 53 114 50 Q114 47 104 43 Z" fill="url(#g)"/>
+
+  <!-- Lens: ring + center dot -->
+  <circle cx="44" cy="50" r="20" fill="none" stroke="white" stroke-width="3.5" opacity="0.5"/>
+  <circle cx="44" cy="50" r="6"  fill="white" opacity="0.7"/>
+</svg>

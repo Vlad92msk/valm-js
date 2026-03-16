@@ -1,0 +1,141 @@
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,300;0,400;0,500;0,600;1,400&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Source+Sans+Pro:ital,wght@0,300;0,400;0,600;0,700;1,400&display=swap');
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+:root {
+  /* ── Colors ──────────────────────────────────────── */
+  --color-bg:        hsl(60 2.7% 14.5% / 1);
+  --color-surface:   hsl(60 2.7% 18% / 1);
+  --color-surface-2: hsl(60 2.7% 16% / 1);
+  --color-border:    hsl(50 9% 25% / 1);
+  --color-text:      hsl(50 9% 73.7% / 1);
+  --color-secondary: hsl(50 9% 60% / 1);
+  --color-muted:     hsl(50 9% 45% / 1);
+  --color-accent:    hsl(190, 100%, 50%);
+  --color-success:   hsl(142 50% 42% / 1);
+  --color-warning:   hsl(38 85% 52% / 1);
+  --color-error:     hsl(0 62% 52% / 1);
+  --color-accent-01: hsla(190, 100%, 50%, 0.66);
+  --color-success-01: hsla(38, 85%, 52%, 0.67);
+
+  /* ── Typography ──────────────────────────────────── */
+  --font-sans: 'Source Sans Pro', 'Helvetica Neue', Arial, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Monaco, monospace;
+
+  --text-xs:   0.75rem;   /* 12px */
+  --text-sm:   0.875rem;  /* 14px */
+  --text-base: 0.9375rem; /* 15px */
+  --text-lg:   1.0625rem; /* 17px */
+  --text-xl:   1.1875rem; /* 19px */
+  --text-2xl:  1.375rem;  /* 22px */
+  --text-3xl:  1.75rem;   /* 28px */
+  --text-4xl:  2.25rem;   /* 36px */
+
+  --leading-tight:   1.25;
+  --leading-normal:  1.4;
+  --leading-relaxed: 1.6;
+
+  --tracking-base:    -0.005em;
+  --tracking-heading: -0.012em;
+
+  --weight-normal:   400;
+  --weight-medium:   500;
+  --weight-semibold: 600;
+  --weight-bold:     700;
+
+  /* ── Spacing ─────────────────────────────────────── */
+  --space-1:  4px;
+  --space-2:  8px;
+  --space-3:  12px;
+  --space-4:  16px;
+  --space-6:  24px;
+  --space-8:  32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+
+  /* ── Misc ────────────────────────────────────────── */
+  --radius:    6px;
+  --radius-sm: 3px;
+  --radius-lg: 10px;
+
+  /*
+    Breakpoints — use these values directly in @media queries:
+      --bp-sm:   480px   (small mobile)
+      --bp-md:   768px   (tablet / large mobile)
+      --bp-lg:  1024px   (desktop)
+  */
+}
+
+body {
+  background-color: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  line-height: var(--leading-relaxed);
+  letter-spacing: var(--tracking-base);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Заголовки */
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-family: var(--font-sans);
+  font-weight: var(--weight-semibold);
+  line-height: var(--leading-tight);
+  letter-spacing: var(--tracking-heading);
+  color: var(--color-text);
+  margin-bottom: 0.75rem;
+}
+
+h1 {
+  font-size: var(--text-4xl);
+  font-weight: var(--weight-bold);
+  letter-spacing: calc(var(--tracking-heading) - 0.005em);
+}
+
+h2 {
+  font-size: var(--text-3xl);
+  font-weight: var(--weight-semibold);
+}
+
+h3 {
+  font-size: var(--text-2xl);
+  font-weight: var(--weight-semibold);
+}
+
+h4 {
+  font-size: var(--text-xl);
+  font-weight: var(--weight-medium);
+}
+
+h5 {
+  font-size: var(--text-lg);
+  font-weight: 500;
+}
+
+h6 {
+  font-size: var(--text-base);
+  font-weight: 500;
+}
+
+/* Параграфы */
+p {
+  font-family: var(--font-sans);
+  line-height: var(--leading-relaxed);
+  margin-bottom: 1rem;
+  color: var(--color-text);
+  font-weight: 300;
+}

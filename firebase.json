@@ -1,0 +1,17 @@
+{
+  "hosting": {
+    "site": "valm-js",
+    "public": "packages/homepage/dist",
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ],
+    "rewrites": [
+      {
+        "source": "**",
+        "destination": "/index.html"
+      }
+    ]
+  }
+}

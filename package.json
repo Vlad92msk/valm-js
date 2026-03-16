@@ -1,0 +1,13 @@
+{
+  "name": "valm-root",
+  "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "yarn workspace valm-js build",
+    "dev:homepage": "yarn workspace homepage dev",
+    "typecheck": "yarn workspaces foreach -A run typecheck",
+    "deploy:homepage": "yarn workspace homepage build && firebase deploy --only hosting"
+  }
+}

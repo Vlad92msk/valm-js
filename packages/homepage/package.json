@@ -1,0 +1,32 @@
+{
+  "name": "homepage",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@bem-react/classname": "^1.8.0",
+    "clsx": "^2.1.1",
+    "valm-js": "*",
+    "react": "^18.0.0",
+    "react-dom": "^18.0.0",
+    "react-markdown": "^9.0.0",
+    "react-router-dom": "^6.0.0",
+    "rehype-slug": "^6.0.0",
+    "remark-directive": "^4.0.0",
+    "remark-gfm": "^4.0.1",
+    "shiki": "^4.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "^18.0.0",
+    "@types/react-dom": "^18.0.0",
+    "@vitejs/plugin-react": "^4.0.0",
+    "sass": "^1.98.0",
+    "typescript": "^5.5.3",
+    "vite": "^5.0.0"
+  }
+}
