@@ -23,7 +23,6 @@ const full = config.getConfig();
 //   screenShare: ScreenShareConfiguration,
 //   recording: RecordingConfiguration,
 //   transcription: TranscriptionConfiguration,
-//   debug: boolean
 // }
 
 // getVideoConfig(): VideoConfiguration
@@ -209,7 +208,6 @@ interface ValmConfiguration {
   screenShare: ScreenShareConfiguration
   recording: RecordingConfiguration
   transcription: TranscriptionConfiguration
-  debug: boolean  // включить отладочные логи
 }
 ```
 
@@ -298,7 +296,7 @@ interface TranscriptionConfiguration {
 ```typescript
 // onChange(callback): VoidFunction — любое изменение любой секции
 const unsub = config.onChange((event: ConfigurationChangeEvent) => {
-  // event.section    — 'video' | 'audio' | 'screenShare' | 'recording' | 'transcription' | 'debug'
+  // event.section    — 'video' | 'audio' | 'screenShare' | 'recording' | 'transcription'
   // event.property   — имя изменённого свойства, например 'frameRate'
   // event.oldValue   — предыдущее значение
   // event.newValue   — новое значение
@@ -340,7 +338,7 @@ unsub() // отписка
 
 ```typescript
 interface ConfigurationChangeEvent<T = any> {
-  section: keyof ValmConfiguration  // 'video' | 'audio' | 'screenShare' | 'recording' | 'transcription' | 'debug'
+  section: keyof ValmConfiguration  // 'video' | 'audio' | 'screenShare' | 'recording' | 'transcription'
   property: string    // изменённое свойство, например 'frameRate', 'deviceId'
   oldValue: T         // предыдущее значение
   newValue: T         // новое значение

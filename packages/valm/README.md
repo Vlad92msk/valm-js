@@ -307,7 +307,6 @@ const media = new Valm({
     language: 'en-US',
     interimResults: true,
   },
-  debug: false,
   autoInitialize: false,
 })
 ```

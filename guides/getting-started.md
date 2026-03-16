@@ -80,8 +80,6 @@ const media = new Valm({
     interimResults: true,
     saveTranscripts: false,
   },
-
-  debug: false,
   autoInitialize: false,        // вызвать initialize() в конструкторе
 })
 ```

@@ -94,6 +94,4 @@ export interface ValmConfiguration {
   recording: RecordingConfiguration
   /** Конфигурация транскрипций */
   transcription: TranscriptionConfiguration
-  /** Включить отладочные логи */
-  debug: boolean
 }
