@@ -3,7 +3,7 @@
 ## Установка
 
 ```bash
-yarn add valm
+yarn add valm-js
 ```
 
 ## Быстрый старт
