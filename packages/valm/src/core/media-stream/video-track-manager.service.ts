@@ -4,9 +4,6 @@ import { TypedEventEmitter } from '../utils/typed-event-emitter'
 import { ConstraintsBuilderService } from './constraints-builder.service'
 import { IVideoProcessingPipeline } from '../../effects/types'
 
-/**
- * События VideoTrackManagerService
- */
 export enum VideoTrackEvents {
   TRACK_ADDED = 'trackAdded',
   TRACK_REMOVED = 'trackRemoved',
@@ -17,9 +14,6 @@ export enum VideoTrackEvents {
   ERROR = 'error',
 }
 
-/**
- * Состояние видео трека
- */
 export interface VideoTrackState {
   track: MediaStreamTrack | null
   isEnabled: boolean
@@ -28,17 +22,11 @@ export interface VideoTrackState {
   settings: MediaTrackSettings | null
 }
 
-/**
- * Payload события трека
- */
 export interface VideoTrackEventPayload {
   track: MediaStreamTrack
   oldTrack?: MediaStreamTrack
 }
 
-/**
- * Типизированная карта событий VideoTrackManagerService
- */
 interface VideoTrackEventMap {
   [VideoTrackEvents.TRACK_ADDED]: (payload: VideoTrackEventPayload) => void
   [VideoTrackEvents.TRACK_REMOVED]: (payload: VideoTrackEventPayload) => void
@@ -49,15 +37,6 @@ interface VideoTrackEventMap {
   [VideoTrackEvents.ERROR]: (error: Error) => void
 }
 
-/**
- * Менеджер видео трека
- *
- * Ответственности:
- * - Создание и управление жизненным циклом видео трека
- * - Включение/выключение/mute/unmute
- * - Переключение устройств
- * - Хранение состояния
- */
 export class VideoTrackManagerService extends TypedEventEmitter<VideoTrackEventMap> {
   private track: MediaStreamTrack | null = null
   private pipeline: IVideoProcessingPipeline | null = null
@@ -75,9 +54,7 @@ export class VideoTrackManagerService extends TypedEventEmitter<VideoTrackEventM
     // при подключении EffectsPlugin
   }
 
-  /**
-   * Включить видео (получить трек с камеры)
-   */
+  // Включить видео (получить трек с камеры)
   async enable(): Promise<MediaStreamTrack | null> {
     try {
       if (this.track) {
@@ -100,10 +77,7 @@ export class VideoTrackManagerService extends TypedEventEmitter<VideoTrackEventM
     }
   }
 
-  /**
-   * Включить видео с уже существующим треком (для preview → publish).
-   * Трек не создаётся через getUserMedia, а принимается извне.
-   */
+  // Включить видео с уже существующим треком (preview → publish)
   async enableWithTrack(externalTrack: MediaStreamTrack): Promise<MediaStreamTrack | null> {
     try {
       if (this.track) {
@@ -131,9 +105,7 @@ export class VideoTrackManagerService extends TypedEventEmitter<VideoTrackEventM
     }
   }
 
-  /**
-   * Выключить видео (остановить и удалить трек)
-   */
+  // Выключить видео и освободить трек
   disable(): void {
     if (this.track) {
       const removedTrack = this.getOutputTrack() // ← возвращаем обработанный
@@ -153,9 +125,7 @@ export class VideoTrackManagerService extends TypedEventEmitter<VideoTrackEventM
     }
   }
 
-  /**
-   * Заглушить видео (трек остаётся, но не передаёт данные)
-   */
+  // Заглушить видео (трек остаётся, но не передаёт данные)
   mute(): void {
     const outputTrack = this.getOutputTrack()
     if (outputTrack) {
@@ -166,9 +136,7 @@ export class VideoTrackManagerService extends TypedEventEmitter<VideoTrackEventM
     }
   }
 
-  /**
-   * Включить звук видео
-   */
+  // Снять приглушение видео
   unmute(): void {
     const outputTrack = this.getOutputTrack()
     if (outputTrack) {
@@ -179,10 +147,7 @@ export class VideoTrackManagerService extends TypedEventEmitter<VideoTrackEventM
     }
   }
 
-  /**
-   * Установить pipeline для обработки видео.
-   * Вызывается из EffectsPlugin при установке.
-   */
+  // Установить pipeline обработки видео (вызывается из EffectsPlugin)
   async setPipeline(pipeline: IVideoProcessingPipeline): Promise<void> {
     this.pipeline = pipeline
 
@@ -196,16 +161,11 @@ export class VideoTrackManagerService extends TypedEventEmitter<VideoTrackEventM
     return this.pipeline
   }
 
-  /**
-   * Получить оригинальный трек (без обработки)
-   */
+  // Получить оригинальный трек (без обработки pipeline)
   getRawTrack(): MediaStreamTrack | null {
     return this.track
   }
 
-  /**
-   * Убрать pipeline
-   */
   removePipeline(): void {
     if (this.pipeline) {
       this.pipeline.stop()
@@ -213,19 +173,14 @@ export class VideoTrackManagerService extends TypedEventEmitter<VideoTrackEventM
     }
   }
 
-  /**
-   * Получить трек для использования (WebRTC, video element)
-   * Возвращает обработанный трек если pipeline активен
-   */
+  // Возвращает обработанный трек если pipeline активен, иначе оригинальный
   getOutputTrack(): MediaStreamTrack | null {
     if (this.pipeline?.isRunning()) {
       return this.pipeline.getOutputTrack()
     }
     return this.track
   }
-  /**
-   * Переключить устройство камеры
-   */
+  // Переключить камеру на другое устройство
   async switchDevice(deviceId?: string): Promise<void> {
     // Отменяем предыдущую операцию если есть
     if (this.abortController) {
@@ -281,16 +236,10 @@ export class VideoTrackManagerService extends TypedEventEmitter<VideoTrackEventM
     }
   }
 
-  /**
-   * Получить текущий трек
-   */
   getTrack(): MediaStreamTrack | null {
     return this.getOutputTrack()
   }
 
-  /**
-   * Получить текущее состояние
-   */
   getState(): VideoTrackState {
     const outputTrack = this.getOutputTrack()
     return {
@@ -302,9 +251,7 @@ export class VideoTrackManagerService extends TypedEventEmitter<VideoTrackEventM
     }
   }
 
-  /**
-   * Уничтожить менеджер и освободить ресурсы
-   */
+  // Уничтожить менеджер и освободить ресурсы
   destroy(): void {
     if (this.abortController) {
       this.abortController.abort()
@@ -316,10 +263,7 @@ export class VideoTrackManagerService extends TypedEventEmitter<VideoTrackEventM
     this.removeAllListeners()
   }
 
-  /**
-   * Универсальный метод получения нового трека
-   * @param stopOldTrackBefore - нужно ли остановить старый трек ДО получения нового (iOS)
-   */
+  // Получить новый трек; stopOldTrackBefore=true для iOS (stop старого до getUserMedia)
   private async getNewTrack(abortController?: AbortController, deviceId?: string, stopOldTrackBefore: boolean = false): Promise<MediaStreamTrack> {
     const oldTrack = stopOldTrackBefore ? this.track : null
 
@@ -354,9 +298,6 @@ export class VideoTrackManagerService extends TypedEventEmitter<VideoTrackEventM
     return newTrack
   }
 
-  /**
-   * Получить новый трек и добавить
-   */
   private async acquireTrack(abortController?: AbortController, deviceId?: string): Promise<void> {
     const newTrack = await this.getNewTrack(abortController, deviceId, false)
     this.track = newTrack
@@ -372,9 +313,6 @@ export class VideoTrackManagerService extends TypedEventEmitter<VideoTrackEventM
     }
   }
 
-  /**
-   * Заменить текущий трек (обычные платформы)
-   */
   private async replaceTrack(abortController?: AbortController, deviceId?: string): Promise<void> {
     const oldTrack = this.track
     const oldOutputTrack = this.getOutputTrack()
@@ -413,9 +351,7 @@ export class VideoTrackManagerService extends TypedEventEmitter<VideoTrackEventM
     }
   }
 
-  /**
-   * Заменить текущий трек для iOS (stop старого трека до получения нового)
-   */
+  // iOS: stop старого трека до получения нового (ограничение Safari)
   private async replaceTrackIOS(abortController?: AbortController, deviceId?: string): Promise<void> {
     const oldOutputTrack = this.getOutputTrack()
     const wasMuted = this.isMuted
@@ -448,9 +384,7 @@ export class VideoTrackManagerService extends TypedEventEmitter<VideoTrackEventM
     }
   }
 
-  /**
-   * Обработчик завершения трека (камера отключена и т.д.)
-   */
+  // Камера отключена или трек завершился
   private handleTrackEnded = (ev: Event): void => {
     const endedTrack = ev.target as MediaStreamTrack | null
     if (!endedTrack) return
@@ -471,16 +405,10 @@ export class VideoTrackManagerService extends TypedEventEmitter<VideoTrackEventM
     this.emitStateIfChanged()
   }
 
-  /**
-   * Проверить что трек активен
-   */
   private isTrackActive(): boolean {
     return this.track !== null && this.track.readyState === 'live'
   }
 
-  /**
-   * Эмитить событие изменения состояния если что-то изменилось
-   */
   private emitStateIfChanged(): void {
     const track = this.track
     const settings = track ? track.getSettings() : null
@@ -511,9 +439,6 @@ export class VideoTrackManagerService extends TypedEventEmitter<VideoTrackEventM
     }
   }
 
-  /**
-   * Обработка ошибок
-   */
   private handleError(message: string, error: unknown): void {
     const finalError = error instanceof Error ? error : new Error(message)
     this.emit(VideoTrackEvents.ERROR, finalError)

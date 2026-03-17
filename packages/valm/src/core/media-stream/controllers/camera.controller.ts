@@ -1,6 +1,6 @@
 import { CameraState, CameraStateChangeCallback, ErrorCallback, VideoConfiguration, MediaErrorEvent, MediaEvents } from '../../types'
 import { ConstraintsBuilderService } from '../constraints-builder.service'
-import { ConfigurationService } from '../../configuration/configuration.service'
+import { ConfigurationService } from '../../configuration'
 import { MediaStreamService } from '../media-stream.service'
 
 export class CameraController {
@@ -144,10 +144,7 @@ export class CameraController {
     }
   }
 
-  /**
-   * Создать preview трек для предпросмотра камеры (настройки, выбор устройства)
-   * Трек НЕ добавляется в основной stream
-   */
+  // Создать preview трек для предпросмотра (не добавляется в основной stream)
   preview = async (deviceId?: string): Promise<MediaStreamTrack> => {
     // Останавливаем предыдущий preview если есть
     this.stopPreview()
@@ -168,10 +165,7 @@ export class CameraController {
     }
   }
 
-  /**
-   * Опубликовать preview трек в основной stream
-   * После вызова preview трек становится основным треком камеры
-   */
+  // Опубликовать preview трек в основной stream
   publishPreview = async (): Promise<void> => {
     if (!this.previewTrack) {
       throw new Error('No preview track to publish. Call preview() first.')
@@ -189,9 +183,7 @@ export class CameraController {
     }
   }
 
-  /**
-   * Остановить preview трек без публикации
-   */
+  // Остановить preview без публикации
   stopPreview = (): void => {
     if (this.previewTrack) {
       this.previewTrack.stop()
@@ -248,8 +240,7 @@ export class CameraController {
 
   get state(): CameraState {
     const mediaState = this.mediaStreamService.getState()
-    // Use the raw camera track for settings (not the pipeline output track,
-    // which is a canvas capture stream and lacks proper width/height/frameRate)
+    // Берём оригинальный трек камеры, а не выход pipeline (canvas capture без width/height/frameRate)
     const rawTrack = this.mediaStreamService.getVideoTrackManager().getRawTrack()
     const settings = rawTrack?.getSettings() ?? null
 

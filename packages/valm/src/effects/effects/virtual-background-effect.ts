@@ -1,17 +1,10 @@
 import { EffectFeature, EffectType, FrameContext } from '../types'
 import { BaseEffect } from './base-effect'
 
-/**
- * Режим масштабирования фона
- */
 export enum BackgroundFitMode {
-  /** Растянуть фон на всю область */
   STRETCH = 'stretch',
-  /** Покрыть всю область с сохранением пропорций (может обрезаться) */
   COVER = 'cover',
-  /** Вместить весь фон (могут быть поля) */
   CONTAIN = 'contain',
-  /** Замостить фон */
   TILE = 'tile',
 }
 
@@ -33,9 +26,6 @@ export interface VirtualBackgroundParams {
   edgeBlur: number
 }
 
-/**
- * Пресеты качества
- */
 export const VIRTUAL_BG_PRESETS = {
   HIGH_QUALITY: {
     edgeSmoothing: true,
@@ -61,12 +51,6 @@ const DEFAULT_PARAMS: VirtualBackgroundParams = {
   ...VIRTUAL_BG_PRESETS.BALANCED,
 }
 
-/**
- * VirtualBackgroundEffect — эффект замены фона
- *
- * Использует сегментацию для разделения человека и фона,
- * затем заменяет фон на пользовательское изображение или цвет.
- */
 export class VirtualBackgroundEffect extends BaseEffect<VirtualBackgroundParams> {
   readonly name = 'virtual_background'
   readonly type = EffectType.VIRTUAL_BACKGROUND
@@ -91,18 +75,12 @@ export class VirtualBackgroundEffect extends BaseEffect<VirtualBackgroundParams>
     super({ ...DEFAULT_PARAMS, ...params })
   }
 
-  /**
-   * Инициализация — загрузка изображения фона
-   */
   async initialize(): Promise<void> {
     if (this.params.imageUrl) {
       await this.loadBackgroundImage(this.params.imageUrl)
     }
   }
 
-  /**
-   * Установить новое изображение фона
-   */
   async setBackgroundImage(url: string): Promise<void> {
     await this.loadBackgroundImage(url)
     this.params.imageUrl = url
@@ -171,10 +149,6 @@ export class VirtualBackgroundEffect extends BaseEffect<VirtualBackgroundParams>
     }
   }
 
-  // ============================================
-  // Private
-  // ============================================
-
   private ensureCanvases(width: number, height: number): void {
     if (this.lastWidth === width && this.lastHeight === height) {
       return
@@ -205,9 +179,6 @@ export class VirtualBackgroundEffect extends BaseEffect<VirtualBackgroundParams>
     this.lastHeight = height
   }
 
-  /**
-   * Загрузить изображение фона
-   */
   private async loadBackgroundImage(url: string): Promise<void> {
     // Если уже загружаем — запоминаем URL для загрузки после завершения текущей
     if (this.imageLoading) {
@@ -256,9 +227,6 @@ export class VirtualBackgroundEffect extends BaseEffect<VirtualBackgroundParams>
     })
   }
 
-  /**
-   * Нарисовать фон (изображение или цвет)
-   */
   private drawBackground(width: number, height: number): void {
     if (!this.backgroundCtx || !this.backgroundCanvas) return
 
@@ -272,9 +240,6 @@ export class VirtualBackgroundEffect extends BaseEffect<VirtualBackgroundParams>
     }
   }
 
-  /**
-   * Нарисовать изображение в зависимости от fitMode
-   */
   private drawBackgroundImage(width: number, height: number): void {
     if (!this.backgroundCtx || !this.backgroundImage) return
 
@@ -340,9 +305,6 @@ export class VirtualBackgroundEffect extends BaseEffect<VirtualBackgroundParams>
     }
   }
 
-  /**
-   * Размыть маску для более плавных краёв
-   */
   private blurMask(mask: Uint8Array, width: number, height: number, blurRadius: number): Uint8Array {
     if (!this.tempCanvas || !this.tempCtx) return mask
 
@@ -373,9 +335,7 @@ export class VirtualBackgroundEffect extends BaseEffect<VirtualBackgroundParams>
     return result
   }
 
-  /**
-   * Применить маску без сглаживания (быстрее)
-   */
+  // Без сглаживания (быстрее)
   private applyMaskHard(sourceData: Uint8ClampedArray, outputData: Uint8ClampedArray, mask: Uint8Array, width: number, height: number): void {
     const length = width * height
 
@@ -392,9 +352,7 @@ export class VirtualBackgroundEffect extends BaseEffect<VirtualBackgroundParams>
     }
   }
 
-  /**
-   * Применить маску со сглаживанием краёв (качественнее)
-   */
+  // Со сглаживанием краёв (качественнее)
   private applyMaskWithSmoothing(sourceData: Uint8ClampedArray, outputData: Uint8ClampedArray, mask: Uint8Array, width: number, height: number): void {
     const length = width * height
     const threshold = this.params.smoothingThreshold

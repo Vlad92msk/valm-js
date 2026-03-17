@@ -1,11 +1,8 @@
-import { ConfigurationService } from '../configuration/configuration.service'
+import { ConfigurationService } from '../configuration'
 
 import { MediaErrorEvent, ScreenShareState } from '../types'
-import { TypedEventEmitter } from '../utils/typed-event-emitter'
+import { TypedEventEmitter } from '../utils'
 
-/**
- * Типизированная карта событий ScreenShareService
- */
 interface ScreenShareEventMap {
   stateChanged: (state: ScreenShareState) => void
   error: (error: MediaErrorEvent) => void
@@ -76,7 +73,6 @@ export class ScreenShareService extends TypedEventEmitter<ScreenShareEventMap> {
       // Снимаем listeners перед остановкой треков
       this.removeTrackListeners()
 
-      // Stop all tracks
       this.stream.getTracks().forEach((track) => {
         track.stop()
       })
@@ -135,7 +131,6 @@ export class ScreenShareService extends TypedEventEmitter<ScreenShareEventMap> {
     }
   }
 
-  // Get active stream settings
   getActiveSettings(): MediaTrackSettings | null {
     if (!this.stream) return null
 
@@ -143,7 +138,7 @@ export class ScreenShareService extends TypedEventEmitter<ScreenShareEventMap> {
     return videoTrack ? videoTrack.getSettings() : null
   }
 
-  // Check screen share capabilities
+  // Проверить поддержку screen share в браузере
   static async checkCapabilities(): Promise<{
     supported: boolean
     capabilities?: MediaTrackSupportedConstraints
@@ -153,7 +148,6 @@ export class ScreenShareService extends TypedEventEmitter<ScreenShareEventMap> {
         return { supported: false }
       }
 
-      // Check supported video constraints
       const capabilities = navigator.mediaDevices.getSupportedConstraints?.() || {}
 
       return {
@@ -165,7 +159,7 @@ export class ScreenShareService extends TypedEventEmitter<ScreenShareEventMap> {
     }
   }
 
-  // Update active stream settings
+  // Применить новые constraints к активному стриму
   async updateSettings(constraints: MediaTrackConstraints): Promise<void> {
     if (!this.stream) {
       throw new Error('No active stream to update settings')

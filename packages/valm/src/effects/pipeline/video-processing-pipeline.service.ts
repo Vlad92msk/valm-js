@@ -6,9 +6,6 @@ import { FrameContext, IFrameOutput, IFrameSource, IVideoEffect, IVideoProcessin
 
 type InternalPipelineConfig = PipelineConfig & { width: number; height: number; processorType: 'auto' | 'canvas' | 'insertable-streams'; performance: PerformanceConfig }
 
-/**
- * Пресеты качества
- */
 export const QUALITY_PRESETS: Record<Exclude<QualityPreset, 'custom'>, Required<Omit<PerformanceConfig, 'preset'>>> = {
   low: {
     mlFrameSkip: 3, // ML: 10fps
@@ -44,9 +41,6 @@ export const DEFAULT_CONFIG: InternalPipelineConfig = {
     preset: 'medium',
   },
 }
-/**
- * VideoProcessingPipelineService — обработка видео с эффектами в реальном времени
- */
 export class VideoProcessingPipelineService implements IVideoProcessingPipeline {
   // Config
   private config: InternalPipelineConfig
@@ -110,16 +104,11 @@ export class VideoProcessingPipelineService implements IVideoProcessingPipeline 
     this.applyPerformanceConfig(this.config.performance)
   }
 
-  /**
-   * Получить менеджер ML-провайдеров (для регистрации кастомных провайдеров)
-   */
+  // Для регистрации кастомных провайдеров
   getProvidersManager(): MLProvidersManager {
     return this.providers
   }
 
-  /**
-   * Установить настройки производительности
-   */
   setPerformanceConfig(config: PerformanceConfig): void {
     this.config.performance = {
       ...this.config.performance,
@@ -129,20 +118,10 @@ export class VideoProcessingPipelineService implements IVideoProcessingPipeline 
     this.applyPerformanceConfig(this.config.performance)
   }
 
-  /**
-   * Получить текущие настройки производительности
-   */
   getPerformanceConfig(): PerformanceConfig {
     return { ...this.config.performance }
   }
 
-  // ============================================
-  // Lifecycle
-  // ============================================
-
-  /**
-   * Запустить pipeline
-   */
   async start(inputTrack: MediaStreamTrack): Promise<void> {
     if (this.running) return
 
@@ -193,9 +172,7 @@ export class VideoProcessingPipelineService implements IVideoProcessingPipeline 
     }
   }
 
-  /**
-   * Остановить pipeline (провайдеры остаются загруженными)
-   */
+  // Провайдеры остаются загруженными
   stop(): void {
     if (!this.running) return
 
@@ -216,9 +193,6 @@ export class VideoProcessingPipelineService implements IVideoProcessingPipeline 
     this.frameOutput = null
   }
 
-  /**
-   * Полная очистка (dispose всего)
-   */
   dispose(): void {
     this.stop()
 
@@ -235,25 +209,11 @@ export class VideoProcessingPipelineService implements IVideoProcessingPipeline 
     this.disposeCanvases()
   }
 
-  // ============================================
-  // Output
-  // ============================================
-
-  /**
-   * Получить выходной трек
-   */
   getOutputTrack(): MediaStreamTrack | null {
     return this.frameOutput?.getTrack() || null
   }
 
-  // ============================================
-  // Effects Management
-  // ============================================
-
-  /**
-   * Добавить эффект
-   * Автоматически инициализирует требуемые провайдеры
-   */
+  // Автоматически инициализирует требуемые провайдеры
   async addEffect(effect: IVideoEffect): Promise<void> {
     // Проверяем дубликат
     if (this.effects.some((e) => e.name === effect.name)) return
@@ -273,9 +233,6 @@ export class VideoProcessingPipelineService implements IVideoProcessingPipeline 
     }
   }
 
-  /**
-   * Удалить эффект
-   */
   removeEffect(name: string): void {
     const index = this.effects.findIndex((e) => e.name === name)
 
@@ -291,23 +248,14 @@ export class VideoProcessingPipelineService implements IVideoProcessingPipeline 
     this.providers.disposeUnused()
   }
 
-  /**
-   * Получить эффект по имени
-   */
   getEffect<T extends IVideoEffect>(name: string): T | null {
     return (this.effects.find((e) => e.name === name) as T) || null
   }
 
-  /**
-   * Получить все эффекты
-   */
   getEffects(): IVideoEffect[] {
     return [...this.effects]
   }
 
-  /**
-   * Изменить порядок эффектов
-   */
   reorderEffects(order: string[]): void {
     const reordered: IVideoEffect[] = []
 
@@ -328,20 +276,10 @@ export class VideoProcessingPipelineService implements IVideoProcessingPipeline 
     this.effects = reordered
   }
 
-  // ============================================
-  // State
-  // ============================================
-
-  /**
-   * Запущен ли pipeline
-   */
   isRunning(): boolean {
     return this.running
   }
 
-  /**
-   * Получить состояние
-   */
   getState(): PipelineState {
     return {
       isRunning: this.running,
@@ -351,10 +289,6 @@ export class VideoProcessingPipelineService implements IVideoProcessingPipeline 
       processorType: FrameProcessorFactory.getCurrentType(),
     }
   }
-
-  // ============================================
-  // Frame Processing (Private)
-  // ============================================
 
   private scheduleNextFrame(): void {
     if (!this.running) return
@@ -366,7 +300,7 @@ export class VideoProcessingPipelineService implements IVideoProcessingPipeline 
 
     const now = performance.now()
 
-    // Throttle to target FPS
+    // Троттлинг до целевого FPS
     const elapsed = now - this.lastFrameTime
 
     if (elapsed < this.frameInterval) {
@@ -382,7 +316,7 @@ export class VideoProcessingPipelineService implements IVideoProcessingPipeline 
       console.error('Frame processing error:', error)
     }
 
-    // Update FPS
+    // Обновляем FPS
     this.frameCount++
     if (now - this.fpsUpdateTime >= 1000) {
       this.currentFps = this.frameCount
@@ -402,10 +336,10 @@ export class VideoProcessingPipelineService implements IVideoProcessingPipeline 
     const outputCtx = this.frameOutput.getContext()
     const { width, height } = this.config
 
-    // 1. Capture frame from source
+    // 1. Захватываем кадр из source
     this.frameSource.capture(this.sourceCanvas, this.sourceCtx)
 
-    // 2. If no effects or all disabled — just copy
+    // 2. Без эффектов — просто копируем
     const enabledEffects = this.effects.filter((e) => e.isEnabled())
 
     if (enabledEffects.length === 0) {
@@ -427,7 +361,7 @@ export class VideoProcessingPipelineService implements IVideoProcessingPipeline 
 
     const segmentationMask = segmentation?.maskData
 
-    // 4. Apply effects chain
+    // 4. Применяем цепочку эффектов
     this.applyEffectsChain(enabledEffects, outputCanvas, outputCtx, segmentation, segmentationMask, mlResults.faceMesh, timestamp)
     this.frameOutput.requestFrame()
   }
@@ -450,9 +384,6 @@ export class VideoProcessingPipelineService implements IVideoProcessingPipeline 
     return this.sourceCtx.getImageData(0, 0, width, height)
   }
 
-  /**
-   * Применить цепочку эффектов
-   */
   private applyEffectsChain(
     effects: IVideoEffect[],
     outputCanvas: HTMLCanvasElement,
@@ -519,14 +450,10 @@ export class VideoProcessingPipelineService implements IVideoProcessingPipeline 
     }
   }
 
-  // ============================================
-  // Canvas Management (Private)
-  // ============================================
-
   private initializeCanvases(): void {
     const { width, height } = this.config
 
-    // Source canvas
+    // Source
     this.sourceCanvas = document.createElement('canvas')
     this.sourceCanvas.width = width
     this.sourceCanvas.height = height
@@ -535,7 +462,7 @@ export class VideoProcessingPipelineService implements IVideoProcessingPipeline 
       alpha: false,
     })
 
-    // Work canvas (for effect chain swap)
+    // Work (для ping-pong цепочки эффектов)
     this.workCanvas = document.createElement('canvas')
     this.workCanvas.width = width
     this.workCanvas.height = height
@@ -548,9 +475,6 @@ export class VideoProcessingPipelineService implements IVideoProcessingPipeline 
     this.initializeMlCanvas()
   }
 
-  /**
-   * Создать/пересоздать ML canvas под текущий mlResolutionScale
-   */
   private initializeMlCanvas(): void {
     // При scale = 1.0 ML canvas не нужен — используем source напрямую
     if (this.mlResolutionScale >= 1.0) {
@@ -625,9 +549,7 @@ export class VideoProcessingPipelineService implements IVideoProcessingPipeline 
     }
   }
 
-  /**
-   * Масштабирование маски сегментации до целевого разрешения (nearest neighbor)
-   */
+  // Масштабирование маски сегментации до целевого разрешения (nearest neighbor)
   private upscaleSegmentation(segmentation: SegmentationResult, targetWidth: number, targetHeight: number): SegmentationResult {
     const { maskData, width: srcW, height: srcH } = segmentation
 

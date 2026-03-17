@@ -1,11 +1,8 @@
 import { AudioConfiguration } from '../configuration/configuration.types'
-import { TypedEventEmitter } from '../utils/typed-event-emitter'
-import { VoiceActivityDetector, VoiceActivityDetectorFactory } from '../utils/voice-activity-detector'
+import { TypedEventEmitter } from '../utils'
+import { VoiceActivityDetector, VoiceActivityDetectorFactory } from '../utils'
 import { ConstraintsBuilderService } from './constraints-builder.service'
 
-/**
- * События AudioTrackManagerService
- */
 export enum AudioTrackEvents {
   TRACK_ADDED = 'trackAdded',
   TRACK_REMOVED = 'trackRemoved',
@@ -17,9 +14,6 @@ export enum AudioTrackEvents {
   ERROR = 'error',
 }
 
-/**
- * Состояние аудио трека
- */
 export interface AudioTrackState {
   track: MediaStreamTrack | null
   isEnabled: boolean
@@ -30,25 +24,16 @@ export interface AudioTrackState {
   settings: MediaTrackSettings | null
 }
 
-/**
- * Payload события трека
- */
 export interface AudioTrackEventPayload {
   track: MediaStreamTrack
   oldTrack?: MediaStreamTrack
 }
 
-/**
- * Payload события громкости
- */
 export interface VolumeChangePayload {
   isSpeaking: boolean
   volume: number
 }
 
-/**
- * Типизированная карта событий AudioTrackManagerService
- */
 interface AudioTrackEventMap {
   [AudioTrackEvents.TRACK_ADDED]: (payload: AudioTrackEventPayload) => void
   [AudioTrackEvents.TRACK_REMOVED]: (payload: AudioTrackEventPayload) => void
@@ -60,31 +45,6 @@ interface AudioTrackEventMap {
   [AudioTrackEvents.ERROR]: (error: Error) => void
 }
 
-/**
- * Менеджер аудио трека
- *
- * Ответственности:
- * - Создание и управление жизненным циклом аудио трека
- * - Включение/выключение/mute/unmute
- * - Переключение устройств
- * - Интеграция с Voice Activity Detection
- * - Хранение состояния
- *
- * @example
- * ```typescript
- * const audioManager = new AudioTrackManagerService(
- *   configService.getAudioConfig,
- *   (options) => new VoiceActivityDetector(options)
- * )
- *
- * const unsub = audioManager.on(AudioTrackEvents.VOLUME_CHANGE, ({ isSpeaking, volume }) => {
- *   console.log('Speaking:', isSpeaking, 'Volume:', volume)
- * })
- *
- * await audioManager.enable()
- * // unsub() — для отписки
- * ```
- */
 export class AudioTrackManagerService extends TypedEventEmitter<AudioTrackEventMap> {
   private track: MediaStreamTrack | null = null
   private isEnabled = false
@@ -106,9 +66,7 @@ export class AudioTrackManagerService extends TypedEventEmitter<AudioTrackEventM
     super()
   }
 
-  /**
-   * Включить аудио (получить трек с микрофона)
-   */
+  // Включить аудио (получить трек с микрофона)
   async enable(): Promise<MediaStreamTrack | null> {
     try {
       if (this.track) {
@@ -131,10 +89,7 @@ export class AudioTrackManagerService extends TypedEventEmitter<AudioTrackEventM
     }
   }
 
-  /**
-   * Включить аудио с уже существующим треком (для preview → publish)
-   * Трек не создаётся через getUserMedia, а принимается извне
-   */
+  // Включить аудио с уже существующим треком (preview → publish)
   async enableWithTrack(track: MediaStreamTrack): Promise<MediaStreamTrack | null> {
     try {
       if (this.track) {
@@ -158,9 +113,7 @@ export class AudioTrackManagerService extends TypedEventEmitter<AudioTrackEventM
     }
   }
 
-  /**
-   * Выключить аудио (остановить и удалить трек)
-   */
+  // Выключить аудио и освободить трек
   disable(): void {
     if (this.track) {
       const removedTrack = this.track
@@ -179,9 +132,7 @@ export class AudioTrackManagerService extends TypedEventEmitter<AudioTrackEventM
     }
   }
 
-  /**
-   * Заглушить аудио (трек остаётся, но не передаёт данные)
-   */
+  // Заглушить аудио (трек остаётся, но не передаёт данные)
   mute(): void {
     if (this.track) {
       this.track.enabled = false
@@ -192,9 +143,7 @@ export class AudioTrackManagerService extends TypedEventEmitter<AudioTrackEventM
     }
   }
 
-  /**
-   * Включить звук аудио
-   */
+  // Снять приглушение
   unmute(): void {
     if (this.track) {
       this.track.enabled = true
@@ -205,9 +154,7 @@ export class AudioTrackManagerService extends TypedEventEmitter<AudioTrackEventM
     }
   }
 
-  /**
-   * Переключить устройство микрофона
-   */
+  // Переключить микрофон на другое устройство
   async switchDevice(deviceId?: string): Promise<void> {
     // Отменяем предыдущую операцию если есть
     if (this.abortController) {
@@ -261,16 +208,10 @@ export class AudioTrackManagerService extends TypedEventEmitter<AudioTrackEventM
     }
   }
 
-  /**
-   * Получить текущий трек
-   */
   getTrack(): MediaStreamTrack | null {
     return this.track
   }
 
-  /**
-   * Получить текущее состояние
-   */
   getState(): AudioTrackState {
     return {
       track: this.track,
@@ -283,9 +224,7 @@ export class AudioTrackManagerService extends TypedEventEmitter<AudioTrackEventM
     }
   }
 
-  /**
-   * Уничтожить менеджер и освободить ресурсы
-   */
+  // Уничтожить менеджер и освободить ресурсы
   destroy(): void {
     if (this.abortController) {
       this.abortController.abort()
@@ -297,11 +236,6 @@ export class AudioTrackManagerService extends TypedEventEmitter<AudioTrackEventM
     this.removeAllListeners()
   }
 
-  // ============ Private методы ============
-
-  /**
-   * Получить новый трек с микрофона
-   */
   private async acquireTrack(abortController?: AbortController, deviceId?: string): Promise<void> {
     let tempStream: MediaStream | null = null
 
@@ -344,9 +278,6 @@ export class AudioTrackManagerService extends TypedEventEmitter<AudioTrackEventM
     }
   }
 
-  /**
-   * Заменить трек
-   */
   private async replaceTrack(abortController?: AbortController, deviceId?: string): Promise<void> {
     let tempStream: MediaStream | null = null
 
@@ -401,9 +332,6 @@ export class AudioTrackManagerService extends TypedEventEmitter<AudioTrackEventM
     }
   }
 
-  /**
-   * Инициализировать Voice Activity Detector
-   */
   private initVAD(track: MediaStreamTrack): void {
     if (!this.createVAD) return
 
@@ -427,9 +355,6 @@ export class AudioTrackManagerService extends TypedEventEmitter<AudioTrackEventM
     })
   }
 
-  /**
-   * Уничтожить Voice Activity Detector
-   */
   private destroyVAD(): void {
     if (this.vad) {
       this.vad.stop()
@@ -445,9 +370,7 @@ export class AudioTrackManagerService extends TypedEventEmitter<AudioTrackEventM
     } as VolumeChangePayload)
   }
 
-  /**
-   * Обработчик завершения трека (микрофон отключён и т.д.)
-   */
+  // Микрофон отключён или трек завершился
   private handleTrackEnded(track: MediaStreamTrack): void {
     if (this.track === track) {
       this.destroyVAD()
@@ -460,16 +383,10 @@ export class AudioTrackManagerService extends TypedEventEmitter<AudioTrackEventM
     }
   }
 
-  /**
-   * Проверить что трек активен
-   */
   private isTrackActive(): boolean {
     return this.track !== null && this.track.readyState === 'live'
   }
 
-  /**
-   * Эмитить событие изменения состояния если что-то изменилось
-   */
   private emitStateIfChanged(): void {
     const currentState = this.getState()
 
@@ -487,9 +404,6 @@ export class AudioTrackManagerService extends TypedEventEmitter<AudioTrackEventM
     }
   }
 
-  /**
-   * Обработка ошибок
-   */
   private handleError(message: string, error: unknown): void {
     const finalError = error instanceof Error ? error : new Error(message)
     this.emit(AudioTrackEvents.ERROR, finalError)

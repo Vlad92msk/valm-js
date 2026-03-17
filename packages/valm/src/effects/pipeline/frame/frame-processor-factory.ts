@@ -1,4 +1,4 @@
-import { DeviceDetector } from '../../../core/utils/device-detector'
+import { DeviceDetector } from '../../../core'
 import type { FrameProcessorType, IFrameOutput, IFrameSource } from '../../types'
 import { supportsInsertableStreams } from '../../types'
 import { CanvasFrameOutput } from './canvas-frame-output'
@@ -6,22 +6,14 @@ import { CanvasFrameSource } from './canvas-frame-source'
 import { InsertableFrameOutput } from './insertable-frame-output'
 import { InsertableFrameSource } from './insertable-frame-source'
 
-/**
- * Фабрика для создания FrameSource и FrameOutput
- */
 export class FrameProcessorFactory {
   private static forcedType: FrameProcessorType | null = null
 
-  /**
-   * Проверить поддержку Insertable Streams
-   */
   static supportsInsertableStreams(): boolean {
     return supportsInsertableStreams()
   }
 
-  /**
-   * Проверить реальную поддержку Insertable Streams (не просто наличие API)
-   */
+  // На мобильных/Safari НИКОГДА не используем, даже если API есть
   private static canUseInsertableStreams(): boolean {
     // На мобильных устройствах НИКОГДА не используем Insertable Streams
     if (DeviceDetector.isMobile() || DeviceDetector.isIOS() || DeviceDetector.isSafari()) {
@@ -41,9 +33,6 @@ export class FrameProcessorFactory {
     }
   }
 
-  /**
-   * Получить текущий тип (с учётом forced и платформы)
-   */
   static getCurrentType(): FrameProcessorType {
     if (this.forcedType) return this.forcedType
 
@@ -55,16 +44,10 @@ export class FrameProcessorFactory {
     return 'insertable-streams'
   }
 
-  /**
-   * Принудительно установить тип (для тестирования)
-   */
   static forceType(type: FrameProcessorType | null): void {
     this.forcedType = type
   }
 
-  /**
-   * Создать FrameSource
-   */
   static createSource(type?: FrameProcessorType): IFrameSource {
     const effectiveType = type ?? this.getCurrentType()
 
@@ -75,9 +58,6 @@ export class FrameProcessorFactory {
     return new CanvasFrameSource()
   }
 
-  /**
-   * Создать FrameOutput
-   */
   static createOutput(type?: FrameProcessorType): IFrameOutput {
     const effectiveType = type ?? this.getCurrentType()
 
@@ -88,9 +68,6 @@ export class FrameProcessorFactory {
     return new CanvasFrameOutput()
   }
 
-  /**
-   * Диагностическая информация
-   */
   static getDiagnostics(): {
     isMobile: boolean
     isIOS: boolean

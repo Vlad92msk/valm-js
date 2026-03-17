@@ -1,8 +1,8 @@
-import { MediaEvents, TrackEvent, VolumeChangeEvent } from '../types/events.types'
+import { MediaEvents, TrackEvent, VolumeChangeEvent } from '../types'
 import { ConfigurationService } from '../configuration'
-import { TypedEventEmitter } from '../utils/typed-event-emitter'
-import { VoiceActivityDetector } from '../utils/voice-activity-detector'
-import { AudioTrackEvents, AudioTrackManagerService, VolumeChangePayload } from './audio-track-manager.service'
+import { TypedEventEmitter } from '../utils'
+import { VoiceActivityDetector } from '../utils'
+import { AudioTrackEvents, AudioTrackManagerService } from './audio-track-manager.service'
 import { ConstraintsBuilderService } from './constraints-builder.service'
 import { MediaStreamState } from './media.types'
 import { VideoTrackEvents, VideoTrackManagerService } from './video-track-manager.service'
@@ -10,9 +10,6 @@ import { VideoTrackEvents, VideoTrackManagerService } from './video-track-manage
 export { MediaEvents }
 export type { MediaStreamState, TrackEvent, VolumeChangeEvent }
 
-/**
- * Типизированная карта событий MediaStreamService
- */
 interface MediaStreamEventMap {
   [MediaEvents.STATE_CHANGED]: (state: MediaStreamState) => void
   [MediaEvents.TRACK_ADDED]: (event: TrackEvent) => void
@@ -29,18 +26,6 @@ interface MediaStreamEventMap {
   [MediaEvents.ERROR]: (error: unknown) => void
 }
 
-/**
- * MediaStreamService — тонкий фасад для управления медиа потоками
- *
- * Делегирует работу:
- * - VideoTrackManagerService — управление видео
- * - AudioTrackManagerService — управление аудио + VAD
- *
- * Координирует:
- * - Сборку MediaStream из треков менеджеров
- * - Маршрутизацию событий наружу
- * - Общие операции
- */
 export class MediaStreamService extends TypedEventEmitter<MediaStreamEventMap> {
   private stream: MediaStream | null = null
   private unsubscribes: VoidFunction[] = []
@@ -63,8 +48,6 @@ export class MediaStreamService extends TypedEventEmitter<MediaStreamEventMap> {
     this.setupVideoManagerListeners()
     this.setupAudioManagerListeners()
   }
-
-  // ============ Video API ============
 
   async enableVideo(): Promise<void> {
     const track = await this.videoManager.enable()
@@ -104,11 +87,7 @@ export class MediaStreamService extends TypedEventEmitter<MediaStreamEventMap> {
     return this.videoManager.getOutputTrack()
   }
 
-  /**
-   * Создать дополнительный видео трек без привязки к основному потоку.
-   * Трек не добавляется в stream и не управляется VideoTrackManager.
-   * Потребитель отвечает за остановку трека через track.stop().
-   */
+  // Создать отдельный видео трек (не добавляется в stream, потребитель сам вызывает track.stop())
   async createAdditionalVideoTrack(deviceId: string): Promise<MediaStreamTrack> {
     const config = this.configService.getVideoConfig()
     const constraints = ConstraintsBuilderService.buildVideoConstraints({
@@ -119,22 +98,14 @@ export class MediaStreamService extends TypedEventEmitter<MediaStreamEventMap> {
     return tempStream.getVideoTracks()[0]
   }
 
-  /**
-   * Получить VideoTrackManager для прямого доступа
-   * Используется для интеграции с VideoProcessingPipeline
-   */
+  // Прямой доступ к VideoTrackManager (для интеграции с VideoProcessingPipeline)
   getVideoTrackManager(): VideoTrackManagerService {
     return this.videoManager
   }
 
-  /**
-   * Получить AudioTrackManagerService для прямого доступа
-   */
   getAudioTrackManagerService(): AudioTrackManagerService {
     return this.audioManager
   }
-
-  // ============ Audio API ============
 
   async enableAudio(): Promise<void> {
     const track = await this.audioManager.enable()
@@ -173,8 +144,6 @@ export class MediaStreamService extends TypedEventEmitter<MediaStreamEventMap> {
   getAudioTrack(): MediaStreamTrack | null {
     return this.audioManager.getTrack()
   }
-
-  // ============ General API ============
 
   getStream(): MediaStream | null {
     return this.stream
@@ -233,8 +202,6 @@ export class MediaStreamService extends TypedEventEmitter<MediaStreamEventMap> {
     this.removeAllListeners()
   }
 
-  // ============ Private: Stream Management ============
-
   private ensureStream(): MediaStream {
     if (!this.stream) {
       this.stream = new MediaStream()
@@ -258,8 +225,6 @@ export class MediaStreamService extends TypedEventEmitter<MediaStreamEventMap> {
       this.stream.removeTrack(track)
     }
   }
-
-  // ============ Private: Event Routing ============
 
   private setupVideoManagerListeners(): void {
     this.unsubscribes.push(

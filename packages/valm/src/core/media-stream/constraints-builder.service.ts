@@ -1,28 +1,8 @@
 import { AudioConfiguration, VideoConfiguration } from '../configuration/configuration.types'
-import { isIOS } from '../utils/ios-media.helper'
+import { isIOS } from '../utils'
 
-/**
- * Stateless builder для создания MediaTrackConstraints
- *
- * Инкапсулирует:
- * - Платформо-специфичную логику (iOS workarounds)
- * - Преобразование конфига приложения в Web API constraints
- *
- * @example
- * ```typescript
- * const videoConfig = configService.getVideoConfig()
- * const constraints = ConstraintsBuilderService.buildVideoConstraints(videoConfig)
- * const stream = await navigator.mediaDevices.getUserMedia({ video: constraints })
- * ```
- */
 export class ConstraintsBuilderService {
-  /**
-   * Строит constraints для видео трека
-   *
-   * На iOS использует упрощённые constraints:
-   * - Только `ideal` вместо `exact` для разрешения
-   * - Либо deviceId, либо facingMode (не оба одновременно)
-   */
+  // Строит constraints для видео. На iOS — упрощённые (ideal вместо exact)
   static buildVideoConstraints(config: VideoConfiguration): MediaTrackConstraints {
     if (isIOS()) {
       return this.buildIOSVideoConstraints(config)
@@ -30,10 +10,7 @@ export class ConstraintsBuilderService {
     return this.buildStandardVideoConstraints(config)
   }
 
-  /**
-   * Строит constraints для аудио трека
-   * Одинаковые для всех платформ
-   */
+  // Строит constraints для аудио
   static buildAudioConstraints(config: AudioConfiguration): MediaTrackConstraints {
     return {
       deviceId: config.deviceId ? { exact: config.deviceId } : undefined,
@@ -44,14 +21,7 @@ export class ConstraintsBuilderService {
     }
   }
 
-  /**
-   * iOS-специфичные constraints
-   *
-   * Особенности iOS Safari:
-   * 1. Не поддерживает `exact` для разрешения — используем `ideal`
-   * 2. Конфликт deviceId + facingMode — используем только один
-   * 3. Более строгие ограничения на комбинации параметров
-   */
+  // iOS Safari: ideal вместо exact, deviceId ИЛИ facingMode (не оба)
   private static buildIOSVideoConstraints(config: VideoConfiguration): MediaTrackConstraints {
     const constraints: MediaTrackConstraints = {}
 
@@ -75,9 +45,6 @@ export class ConstraintsBuilderService {
     return constraints
   }
 
-  /**
-   * Стандартные constraints для Chrome, Firefox и других браузеров
-   */
   private static buildStandardVideoConstraints(config: VideoConfiguration): MediaTrackConstraints {
     return {
       deviceId: config.deviceId ? { exact: config.deviceId } : undefined,

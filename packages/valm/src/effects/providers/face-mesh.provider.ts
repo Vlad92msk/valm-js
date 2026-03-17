@@ -1,18 +1,10 @@
 import { FaceMeshClient, FaceMeshWorkerConfig, FaceMeshWorkerResult } from './face-mesh.client'
 import { BaseMLProvider, IBaseMLProviderOptions } from './baseML.provider'
 
-/**
- * Опции для FaceMeshProvider
- */
 export interface FaceMeshProviderOptions extends IBaseMLProviderOptions {
-  /** Конфигурация инициализации (modelPath, wasmPath, delegate и т.д.) */
   config?: FaceMeshWorkerConfig
 }
 
-/**
- * FaceMeshProvider — обёртка над FaceMeshClient
- * с throttling, caching и anti-parallel защитой из BaseMLProvider
- */
 export class FaceMeshProvider extends BaseMLProvider<FaceMeshWorkerConfig, FaceMeshWorkerResult> {
   private client = new FaceMeshClient()
   private initConfig: FaceMeshWorkerConfig

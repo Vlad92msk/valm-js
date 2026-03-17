@@ -1,8 +1,8 @@
-import { MediaEvents } from '../types/events.types'
-import { ConfigurationService } from '../configuration/configuration.service'
-import { MediaStreamService } from '../media-stream/media-stream.service'
-import { ScreenShareService } from '../screen-share/screen-share.service'
-import { TypedEventEmitter } from '../utils/typed-event-emitter'
+import { MediaEvents } from '../types'
+import { ConfigurationService } from '../configuration'
+import { MediaStreamService } from '../media-stream'
+import { ScreenShareService } from '../screen-share'
+import { TypedEventEmitter } from '../utils'
 
 export interface RecordingOptions {
   mimeType?: string
@@ -29,9 +29,6 @@ export interface RecordingState {
   quality: string
 }
 
-/**
- * Типизированная карта событий RecordingService
- */
 interface RecordingEventMap {
   recordingStarted: (state: RecordingState) => void
   recordingStopped: (blob: Blob) => void
@@ -208,7 +205,7 @@ export class RecordingService extends TypedEventEmitter<RecordingEventMap> {
           duration: this.getDuration(),
         })
 
-        // Check file size limit (maxFileSize in MB)
+        // Проверяем лимит размера файла (maxFileSize в МБ)
         const maxFileSize = this.currentOptions.maxFileSize
         if (maxFileSize && maxFileSize > 0 && totalSize >= maxFileSize * 1024 * 1024) {
           this.emit('recordingLimitReached', { type: 'fileSize', limit: maxFileSize })

@@ -1,55 +1,24 @@
-import { DeviceDetector } from '../../core/utils/device-detector'
+import { DeviceDetector } from '../../core'
 import { FaceMeshWorkerResult } from '../providers/face-mesh.client'
 import { SegmentationResult } from '../providers/segmentation.client'
 import { EffectFeature, IMLProvider, IVideoEffect } from '../types'
 
-/**
- * Результат ML-детекции за один кадр
- */
 export interface MLDetectionResult {
   segmentation: SegmentationResult | null
   faceMesh: FaceMeshWorkerResult | null
 }
 
-/**
- * Конфигурация кастомных провайдеров для EffectsPlugin
- */
 export interface CustomProvidersConfig {
   segmentation?: IMLProvider<unknown, SegmentationResult>
   faceMesh?: IMLProvider<unknown, FaceMeshWorkerResult>
 }
 
-/**
- * MLProvidersManager — управление ML-провайдерами (сегментация, face mesh)
- *
- * Не создаёт провайдеры самостоятельно — они регистрируются извне
- * через registerProvider() или через EffectsPlugin({ providers: {...} }).
- *
- * Инкапсулирует:
- * - Регистрацию провайдеров
- * - Ленивую инициализацию при появлении эффектов
- * - Детекцию (segmentation, faceMesh) с возвратом кэша
- * - Освобождение провайдеров при удалении эффектов
- */
 export class MLProvidersManager {
   private segmentationProvider: IMLProvider<unknown, SegmentationResult> | null = null
   private faceMeshProvider: IMLProvider<unknown, FaceMeshWorkerResult> | null = null
   private requiredFeatures: Set<EffectFeature> = new Set()
 
-  /**
-   * Зарегистрировать ML-провайдер для указанной фичи
-   *
-   * Заменяет предыдущий провайдер. Если старый провайдер инициализирован —
-   * он будет освобождён.
-   *
-   * @example
-   * ```typescript
-   * manager.registerProvider(EffectFeature.SEGMENTATION, new SegmentationProvider({
-   *   minInterval: 33,
-   *   config: { delegate: 'GPU' }
-   * }))
-   * ```
-   */
+  // Заменяет предыдущий провайдер, если был
   registerProvider(feature: EffectFeature, provider: IMLProvider<unknown, unknown>): void {
     if (feature === EffectFeature.SEGMENTATION) {
       this.segmentationProvider?.dispose()
@@ -60,9 +29,6 @@ export class MLProvidersManager {
     }
   }
 
-  /**
-   * Обновить набор требуемых фич на основе текущих эффектов
-   */
   updateRequiredFeatures(effects: IVideoEffect[]): void {
     this.requiredFeatures.clear()
 
@@ -73,12 +39,7 @@ export class MLProvidersManager {
     }
   }
 
-  /**
-   * Инициализировать зарегистрированные провайдеры, которые требуются эффектам
-   *
-   * Провайдеры должны быть зарегистрированы через registerProvider() до вызова.
-   * Если провайдер не зарегистрирован для требуемой фичи — она будет недоступна.
-   */
+  // Провайдеры должны быть зарегистрированы через registerProvider() до вызова
   async initializeRequired(): Promise<void> {
     const promises: Promise<void>[] = []
 
@@ -110,18 +71,12 @@ export class MLProvidersManager {
     }
   }
 
-  /**
-   * Запустить детекцию у всех требуемых провайдеров
-   */
   async detect(imageData: ImageData, timestamp: number): Promise<MLDetectionResult> {
     const [segmentation, faceMesh] = await Promise.all([this.detectSegmentation(imageData, timestamp), this.detectFaceMesh(imageData, timestamp)])
 
     return { segmentation, faceMesh }
   }
 
-  /**
-   * Получить кэшированные результаты (без запуска детекции)
-   */
   getCachedResults(): MLDetectionResult {
     return {
       segmentation: this.segmentationProvider?.getLastResult() || null,
@@ -129,9 +84,6 @@ export class MLProvidersManager {
     }
   }
 
-  /**
-   * Освободить провайдеры, которые больше не требуются эффектам
-   */
   disposeUnused(): void {
     if (!this.requiredFeatures.has(EffectFeature.SEGMENTATION) && this.segmentationProvider) {
       this.segmentationProvider.dispose()
@@ -144,9 +96,6 @@ export class MLProvidersManager {
     }
   }
 
-  /**
-   * Освободить все ресурсы
-   */
   dispose(): void {
     this.segmentationProvider?.dispose()
     this.segmentationProvider = null
@@ -156,10 +105,6 @@ export class MLProvidersManager {
 
     this.requiredFeatures.clear()
   }
-
-  // ============================================
-  // Private
-  // ============================================
 
   private async detectSegmentation(imageData: ImageData, timestamp: number): Promise<SegmentationResult | null> {
     if (!this.requiredFeatures.has(EffectFeature.SEGMENTATION)) return null

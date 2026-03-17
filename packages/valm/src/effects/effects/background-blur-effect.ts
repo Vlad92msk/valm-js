@@ -1,4 +1,4 @@
-import { DeviceDetector } from '../../core/utils/device-detector'
+import { DeviceDetector } from '../../core'
 import { EffectFeature, EffectType, FrameContext } from '../types'
 import { BaseEffect } from './base-effect'
 
@@ -35,9 +35,6 @@ const DEFAULT_PARAMS: BackgroundBlurParams = {
   ...BLUR_PRESETS.BALANCED,
 }
 
-/**
- * Определить поддержку CSS filter
- */
 function supportsFilterBlur(): boolean {
   if (DeviceDetector.isMobile()) {
     // На iOS Safari filter работает, но плохо
@@ -124,13 +121,7 @@ export class BackgroundBlurEffect extends BaseEffect<BackgroundBlurParams> {
     this.tempCtx = null
   }
 
-  // ============================================
-  // Private - Blur Methods
-  // ============================================
-
-  /**
-   * CSS filter blur (быстро, для десктопа)
-   */
+  // CSS filter (десктоп — быстрее)
   private applyFilterBlur(sourceCanvas: HTMLCanvasElement, width: number, height: number): void {
     if (!this.blurCtx || !this.blurCanvas) return
 
@@ -140,11 +131,7 @@ export class BackgroundBlurEffect extends BaseEffect<BackgroundBlurParams> {
     this.blurCtx.filter = 'none'
   }
 
-  /**
-   * Оптимизированный box blur (для мобильных)
-   * - Используем downscale/upscale для ускорения
-   * - Меньше радиус для производительности
-   */
+  // Box blur через downscale/upscale (мобильные)
   private applyBoxBlurOptimized(sourceCanvas: HTMLCanvasElement, width: number, height: number): void {
     if (!this.blurCtx || !this.tempCtx || !this.blurCanvas || !this.tempCanvas) return
 
@@ -170,9 +157,6 @@ export class BackgroundBlurEffect extends BaseEffect<BackgroundBlurParams> {
     this.blurCtx.drawImage(this.tempCanvas, 0, 0, smallWidth, smallHeight, 0, 0, width, height)
   }
 
-  /**
-   * Box blur алгоритм
-   */
   private applyBoxBlur(imageData: ImageData, width: number, height: number, radius: number): void {
     if (radius < 1) return
 
@@ -227,10 +211,6 @@ export class BackgroundBlurEffect extends BaseEffect<BackgroundBlurParams> {
       }
     }
   }
-
-  // ============================================
-  // Private - Canvas & Mask
-  // ============================================
 
   private ensureCanvases(width: number, height: number): void {
     if (this.lastWidth === width && this.lastHeight === height) {

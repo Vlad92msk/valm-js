@@ -1,14 +1,7 @@
 import { IFrameOutput } from '../../types'
 
-/**
- * InsertableFrameOutput — генерация трека через MediaStreamTrackGenerator
- *
- * Оптимизированная реализация для Chrome 94+, Edge 94+.
- * Меньше latency по сравнению с captureStream.
- *
- * ВАЖНО: Всё ещё использует canvas для рисования эффектов,
- * но выходной трек генерируется через Insertable Streams.
- */
+// Генерация трека через MediaStreamTrackGenerator (Chrome 94+, Edge 94+)
+// Canvas используется для рисования эффектов, но выходной трек — через Insertable Streams
 export class InsertableFrameOutput implements IFrameOutput {
   private canvas: HTMLCanvasElement | null = null
   private ctx: CanvasRenderingContext2D | null = null

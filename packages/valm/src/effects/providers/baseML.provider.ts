@@ -5,14 +5,7 @@ export interface IBaseMLProviderOptions {
   cacheEnabled?: boolean
 }
 
-/**
- * Абстрактный базовый класс для ML-провайдеров
- *
- * Реализует throttling, caching и anti-parallel защиту.
- * Наследники реализуют только onInitialize, onDetect, onDispose.
- *
- * Можно использовать напрямую IMLProvider если не нужен BaseMLProvider.
- */
+// Throttling, caching, anti-parallel. Наследники реализуют onInitialize/onDetect/onDispose
 export abstract class BaseMLProvider<TConfig, TResult> implements IMLProvider<TConfig, TResult> {
   protected initialized = false
   protected lastCallTime = 0
@@ -41,7 +34,7 @@ export abstract class BaseMLProvider<TConfig, TResult> implements IMLProvider<TC
     const now = timestamp
     const delta = now - this.lastCallTime
 
-    // ---- Throttle: return cached value ----
+    // Throttle: возвращаем кэш
     if (this.cacheEnabled && delta < this.minInterval) {
       if (this.lastResult !== null) {
         return this.lastResult
@@ -49,14 +42,14 @@ export abstract class BaseMLProvider<TConfig, TResult> implements IMLProvider<TC
       // если нет lastResult — просто продолжаем (а не бросаем исключение)
     }
 
-    // ---- Anti-parallel: return in-progress promise ----
+    // Anti-parallel: возвращаем текущий промис
     if (this.pendingPromise) {
       return this.pendingPromise
     }
 
     this.lastCallTime = now
 
-    // ---- Execute detection ----
+    // Детекция
     this.pendingPromise = this.onDetect(imageData, timestamp)
       .then((res) => {
         this.lastResult = res

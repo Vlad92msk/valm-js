@@ -35,7 +35,6 @@ export interface AudioConfiguration {
   enableSpeakingDetection: boolean
   /** Порог громкости для детекции речи (0-100) */
   volumeThreshold: number
-  /** Дополнительные MediaTrackConstraints */
   constraints: MediaTrackConstraints
 }
 
@@ -50,7 +49,7 @@ export interface ScreenShareConfiguration {
   maxHeight?: number
   /** Максимальная частота кадров (undefined = без ограничений) */
   maxFrameRate?: number
-  /** Подсказка кодеку: 'motion' — видеоконтент (фильмы), 'detail' — презентации/текст, 'text' — только текст */
+  // Подсказка кодеку: 'motion' — видео, 'detail' — презентации, 'text' — только текст
   contentHint?: 'motion' | 'detail' | 'text' | ''
 }
 
@@ -84,14 +83,9 @@ export interface RecordingConfiguration {
 }
 
 export interface ValmConfiguration {
-  /** Конфигурация видео */
   video: VideoConfiguration
-  /** Конфигурация аудио */
   audio: AudioConfiguration
-  /** Конфигурация демонстрации экрана */
   screenShare: ScreenShareConfiguration
-  /** Конфигурация записи */
   recording: RecordingConfiguration
-  /** Конфигурация транскрипций */
   transcription: TranscriptionConfiguration
 }

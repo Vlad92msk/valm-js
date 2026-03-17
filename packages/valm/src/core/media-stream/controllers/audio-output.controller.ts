@@ -1,4 +1,4 @@
-import { DeviceDetector } from '../../utils/device-detector'
+import { DeviceDetector } from '../../utils'
 
 export interface AudioOutputState {
   deviceId: string
@@ -39,7 +39,7 @@ export class AudioOutputController {
     }
 
     if (typeof HTMLAudioElement.prototype.setSinkId === 'undefined') {
-      // Save state anyway, but warn
+      // setSinkId не поддерживается — сохраняем состояние, но устройство не переключится
     }
 
     this.state.deviceId = deviceId
@@ -107,7 +107,7 @@ export class AudioOutputController {
   onChange = (callback: AudioOutputChangeCallback): VoidFunction => {
     this.callbacks.add(callback)
 
-    // Immediately call callback with current state
+    // Сразу вызываем колбэк с текущим состоянием
     callback(this.getOutputState())
 
     return () => this.callbacks.delete(callback)
@@ -118,10 +118,7 @@ export class AudioOutputController {
     this.callbacks.forEach((cb) => cb(currentState))
   }
 
-  /**
-   * Проигрывает тестовый звук на текущем устройстве вывода.
-   * Если передан url — проигрывается файл, иначе генерируется тон 440Hz.
-   */
+  // Проигрывает тестовый звук (файл по url или тон 440Hz)
   async playTestSound(options?: { url?: string; duration?: number }): Promise<void> {
     const duration = options?.duration ?? 2
 

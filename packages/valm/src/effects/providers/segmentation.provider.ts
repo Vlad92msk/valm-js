@@ -1,18 +1,10 @@
 import { SegmentationConfig, SegmentationResult, SegmentationService } from './segmentation.client'
 import { BaseMLProvider, IBaseMLProviderOptions } from './baseML.provider'
 
-/**
- * Опции для SegmentationProvider
- */
 export interface SegmentationProviderOptions extends IBaseMLProviderOptions {
-  /** Конфигурация инициализации (delegate, wasmPath, modelPath и т.д.) */
   config?: SegmentationConfig
 }
 
-/**
- * SegmentationProvider — обёртка над SegmentationService
- * с throttling, caching и anti-parallel защитой из BaseMLProvider
- */
 export class SegmentationProvider extends BaseMLProvider<SegmentationConfig, SegmentationResult> {
   private service = new SegmentationService()
   private initConfig: SegmentationConfig

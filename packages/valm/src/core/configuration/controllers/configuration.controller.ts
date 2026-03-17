@@ -1,4 +1,3 @@
-// controllers/configuration.controller.ts
 import {
   ConfigurationChangeEvent,
   AudioConfiguration,
@@ -21,7 +20,7 @@ export class ConfigurationController {
   private resetCallbacks = new Set<ConfigurationResetCallback>()
   private importCallbacks = new Set<ConfigurationImportCallback>()
 
-  // Specialized event callbacks
+  // Колбэки по секциям конфигурации
   private videoChangeCallbacks = new Set<ConfigurationChangeCallback>()
   private audioChangeCallbacks = new Set<ConfigurationChangeCallback>()
   private screenShareChangeCallbacks = new Set<ConfigurationChangeCallback>()
@@ -152,7 +151,6 @@ export class ConfigurationController {
     return this.configService.toggleAudioEnabled()
   }
 
-  // Transcription methods
   setTranscriptionLanguage = (language: string): void => {
     this.configService.setTranscriptionLanguage(language)
   }

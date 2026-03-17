@@ -1,14 +1,11 @@
-import { ConfigurationService } from '../configuration/configuration.service'
-import { TypedEventEmitter } from '../utils/typed-event-emitter'
+import { ConfigurationService } from '../configuration'
+import { TypedEventEmitter } from '../utils'
 import { getSpeechRecognitionConstructor, isSpeechRecognitionSupported } from './speech-recognition.types'
 import { TranscriptionEvents, TranscriptItem } from './transcription.types'
 
-/**
- * Типизированная карта событий TranscriptionService
- */
 interface TranscriptionEventMap {
-  [TranscriptionEvents.STARTED]: () => void
-  [TranscriptionEvents.STOPPED]: () => void
+  [TranscriptionEvents.STARTED]: VoidFunction
+  [TranscriptionEvents.STOPPED]: VoidFunction
   [TranscriptionEvents.TRANSCRIPT]: (transcript: TranscriptItem) => void
   [TranscriptionEvents.ERROR]: (error: unknown) => void
 }

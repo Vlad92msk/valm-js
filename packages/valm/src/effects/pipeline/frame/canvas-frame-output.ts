@@ -1,13 +1,6 @@
 import { IFrameOutput } from '../../types'
 
-/**
- * CanvasFrameOutput — генерация трека через canvas.captureStream()
- *
- * Fallback реализация, работает во всех браузерах.
- *
- * ВАЖНО для Safari: captureStream(0) используется для ручного управления кадрами.
- * Safari требует явного вызова track.requestFrame() для генерации кадров.
- */
+// Safari: captureStream(0) + явный track.requestFrame() для генерации кадров
 export class CanvasFrameOutput implements IFrameOutput {
   private canvas: HTMLCanvasElement | null = null
   private ctx: CanvasRenderingContext2D | null = null
@@ -74,12 +67,6 @@ export class CanvasFrameOutput implements IFrameOutput {
     return this.ctx
   }
 
-  /**
-   * Принудительно генерирует новый кадр (для Safari manual mode)
-   *
-   * В Safari с captureStream(0) нужно явно вызывать requestFrame()
-   * после каждого изменения canvas, иначе кадры не будут генерироваться.
-   */
   requestFrame(): void {
     if (!this.track) return
 
@@ -96,12 +83,7 @@ export class CanvasFrameOutput implements IFrameOutput {
     }
   }
 
-  /**
-   * Safari workaround: добавляем невидимый меняющийся пиксель
-   *
-   * Гарантирует что canvas визуально меняется между кадрами.
-   * Без этого Safari может не генерировать новые кадры.
-   */
+  // Safari workaround: без меняющегося пикселя Safari может не генерировать новые кадры
   private addDirtyPixel(): void {
     if (!this.ctx || !this.canvas) return
 

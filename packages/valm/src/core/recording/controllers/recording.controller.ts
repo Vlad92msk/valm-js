@@ -1,5 +1,4 @@
-// controllers/recording.controller.ts
-import { ConfigurationService } from '../../configuration/configuration.service'
+import { ConfigurationService } from '../../configuration'
 import { RecordingOptions, RecordingService, RecordingState } from '../recording.service'
 
 export interface RecordingUtils {

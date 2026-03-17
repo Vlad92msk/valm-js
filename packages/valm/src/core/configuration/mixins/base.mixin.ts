@@ -8,11 +8,10 @@ import { TypedEventEmitter } from '../../utils'
 export type Constructor<T = object> = new (...args: any[]) => T
 
 export interface BaseEvents extends Record<string, (...args: any[]) => void> {
-  // Базовые события
   configurationChanged: (event: ConfigurationChangeEvent) => void
   configReset: (data: { oldConfig: ValmConfiguration; newConfig: ValmConfiguration }) => void
   configImported: (data: { oldConfig: ValmConfiguration; newConfig: ValmConfiguration }) => void
-  // Зарезервированное место для новых событий
+  // Динамические события вида `${section}ConfigChanged`
   [key: `${string}ConfigChanged`]: (event: ConfigurationChangeEvent) => void
 }
 
@@ -44,9 +43,8 @@ export class BaseConfigurationService extends TypedEventEmitter<AllEvents> {
     return {}
   }
 
-  protected setupValidators(): void {
-    // Will be extended by mixins
-  }
+  // Точка расширения — миксины добавляют свои валидаторы через override
+  protected setupValidators(): void {}
 
   protected validateAndSet(path: string, value: any): void {
     const validator = this.validators.get(path)

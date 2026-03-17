@@ -1,19 +1,13 @@
-// ============================================
 // Core
-// ============================================
 export { Valm } from './core/valm'
 export type { ValmSnapshot } from './core/valm'
 
-// ============================================
 // Plugins
-// ============================================
 export { EffectsPlugin } from './effects/effects-plugin'
 export type { EffectsPluginOptions } from './effects/effects-plugin'
 export type { IMediaPlugin, PluginContext } from './core/plugin.types'
 
-// ============================================
 // Controllers
-// ============================================
 export { CameraController } from './core/media-stream/controllers/camera.controller'
 export { MicrophoneController } from './core/media-stream/controllers/microphone.controller'
 export { DevicesController } from './core/media-stream/controllers/devices.controller'
@@ -24,14 +18,10 @@ export { RecordingController } from './core/recording/controllers/recording.cont
 export { ScreenShareController } from './core/screen-share/controllers/screen-share.controller'
 export { TranscriptionController } from './core/transcription/controllers/transcription.controller'
 
-// ============================================
 // Services
-// ============================================
 export { PermissionsService } from './core/permissions'
 
-// ============================================
 // Types
-// ============================================
 export * from './core/types'
 export type { EffectsState, EffectsStateChangeCallback, EffectsErrorCallback } from './effects/effects.controller'
 export type { RecordingState } from './core/recording/recording.service'
@@ -54,9 +44,7 @@ export { BlurMode } from './effects/effects/background-blur-effect'
 export type { VirtualBackgroundParams } from './effects/effects/virtual-background-effect'
 export { BackgroundFitMode } from './effects/effects/virtual-background-effect'
 
-// ============================================
 // Utilities
-// ============================================
 export { DeviceDetector } from './core/utils/device-detector'
 export { TypedEventEmitter } from './core/utils/typed-event-emitter'
 export type { VoiceActivityConfig } from './core/utils/voice-activity-detector'

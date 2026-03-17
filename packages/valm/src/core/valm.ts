@@ -90,10 +90,7 @@ export class Valm extends TypedEventEmitter<ValmEvents> {
     }
   }
 
-  /**
-   * Контроллер эффектов. Доступен только после установки EffectsPlugin.
-   * Бросает ошибку при обращении без установленного плагина.
-   */
+  // Доступен только после module.use(new EffectsPlugin())
   get effectsController(): EffectsController {
     const plugin = this.plugins.get('effects')
     if (!plugin || !('controller' in plugin)) {
@@ -117,16 +114,10 @@ export class Valm extends TypedEventEmitter<ValmEvents> {
     return this
   }
 
-  /**
-   * Получить установленный плагин по имени.
-   */
   getPlugin<T extends IMediaPlugin>(name: string): T | undefined {
     return this.plugins.get(name) as T | undefined
   }
 
-  /**
-   * Проверить, установлен ли плагин.
-   */
   hasPlugin(name: string): boolean {
     return this.plugins.has(name)
   }
@@ -140,10 +131,7 @@ export class Valm extends TypedEventEmitter<ValmEvents> {
     return this.snapshot
   }
 
-  /**
-   * Инициализация с отслеживанием состояния (`initializationState`).
-   * Предпочтительный метод для React-приложений.
-   */
+  // Инициализация с отслеживанием состояния (для React через subscribe/getSnapshot)
   async initializeMedia(initConfig?: Partial<ValmConfiguration>): Promise<void> {
     this.error = null
     this.initializationState = 'initializing'
@@ -170,10 +158,7 @@ export class Valm extends TypedEventEmitter<ValmEvents> {
     }
   }
 
-  /**
-   * Низкоуровневая инициализация без трекинга состояния.
-   * Используй `initializeMedia()` если нужен `getSnapshot()`.
-   */
+  // Низкоуровневая инициализация (без трекинга состояния)
   async initialize(): Promise<void> {
     try {
       await this.devicesController._updateCache()

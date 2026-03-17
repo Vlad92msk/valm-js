@@ -1,7 +1,3 @@
-/**
- * Unified device detection utility.
- * Single source of truth for platform/browser checks across the module.
- */
 export const DeviceDetector = {
   isMobile(): boolean {
     const isMobileUA = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)

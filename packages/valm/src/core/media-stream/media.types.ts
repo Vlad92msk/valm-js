@@ -1,10 +1,8 @@
-// types/media.types.ts
 import { ValmConfiguration } from '../configuration/configuration.types'
 import { ScreenShareState } from '../screen-share/screen-share.types'
 import { TranscriptionState } from '../transcription/transcription.types'
-import { EffectsState } from '../../effects/effects.controller'
+import { EffectsState } from '../../effects'
 import { DevicesState } from './device.types'
-import { Valm } from "../valm";
 
 export interface CameraState {
   isEnabled: boolean
@@ -32,7 +30,7 @@ export interface LocalMediaState {
   screenShare: ScreenShareState
   devices: DevicesState
   transcription: TranscriptionState
-  /** null если EffectsPlugin не установлен */
+  // null если EffectsPlugin не установлен
   effects: EffectsState | null
 }
 

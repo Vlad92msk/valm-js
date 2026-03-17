@@ -1,6 +1,5 @@
-// controllers/transcription.controller.ts
-import { ConfigurationService } from '../../configuration/configuration.service'
-import { MediaStreamService } from '../../media-stream/media-stream.service'
+import { ConfigurationService } from '../../configuration'
+import { MediaStreamService } from '../../media-stream'
 import { TranscriptionService } from '../transcription.service'
 import { MediaErrorEvent, MediaEvents } from '../../types'
 import { TranscriptCallback, TranscriptionEvents, TranscriptionState, TranscriptionStateChangeCallback, TranscriptItem } from '../transcription.types'

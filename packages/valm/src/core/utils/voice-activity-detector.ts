@@ -1,4 +1,3 @@
-// services/media-stream/voice-activity-detector.service.ts
 import { TypedEventEmitter } from './typed-event-emitter'
 
 export interface VoiceActivityConfig {
@@ -10,7 +9,7 @@ export interface VoiceActivityConfig {
   fftSize?: number
   /** Интервал обновления анализа, мс */
   updateInterval?: number
-  /** Сглаживание уровня громкости (0–1, ближе к 1 — сильнее сглаживание) */
+  /** 0–1, ближе к 1 — сильнее сглаживание */
   smoothingFactor?: number
 }
 
@@ -21,9 +20,6 @@ export interface VoiceActivityState {
 
 export type VoiceActivityCallback = (state: VoiceActivityState) => void
 
-/**
- * Типизированная карта событий VoiceActivityDetector
- */
 interface VADEventMap {
   stateChange: (state: VoiceActivityState) => void
 }
@@ -140,7 +136,4 @@ export class VoiceActivityDetector extends TypedEventEmitter<VADEventMap> {
   }
 }
 
-/**
- * Фабрика для создания VAD
- */
 export type VoiceActivityDetectorFactory = (options: { volumeThreshold: number; silenceTimeout: number }) => VoiceActivityDetector

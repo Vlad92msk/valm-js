@@ -1,11 +1,6 @@
 import { IFrameSource } from '../../types'
 
-/**
- * CanvasFrameSource — захват кадров через video element + canvas
- *
- * Fallback реализация, работает во всех браузерах.
- * Использует скрытый video element для декодирования потока.
- */
+// Захват кадров через video element + canvas (fallback для всех браузеров)
 export class CanvasFrameSource implements IFrameSource {
   private video: HTMLVideoElement | null = null
   private isInitialized = false

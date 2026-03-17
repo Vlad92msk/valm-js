@@ -1,4 +1,3 @@
-// types/events.types.ts
 import { ValmConfiguration } from '../configuration/configuration.types'
 
 export enum MediaEvents {

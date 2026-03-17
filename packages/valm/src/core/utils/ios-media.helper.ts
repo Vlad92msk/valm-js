@@ -1,9 +1,3 @@
-/**
- * Хелпер для работы с медиа на iOS
- * Решает проблемы с разрешениями и getUserMedia
- *
- * Device detection delegated to DeviceDetector (single source of truth).
- */
 import { DeviceDetector } from './device-detector'
 
 export const isIOS = (): boolean => DeviceDetector.isIOS()
@@ -12,10 +6,7 @@ export const isIOSSafari = (): boolean => DeviceDetector.isIOSSafari()
 
 export const isIOSChrome = (): boolean => DeviceDetector.isIOSChrome()
 
-/**
- * На iOS Safari требуется user gesture для первого запроса getUserMedia
- * Этот метод нужно вызывать в обработчике клика/тапа
- */
+// На iOS Safari требуется user gesture для первого getUserMedia
 export const requestIOSMediaPermissions = async (): Promise<{
   video: boolean
   audio: boolean
@@ -41,9 +32,7 @@ export const requestIOSMediaPermissions = async (): Promise<{
   return result
 }
 
-/**
- * Проверяет, были ли получены разрешения на медиа
- */
+// Проверяет разрешения через наличие label в enumerateDevices (iOS не имеет Permissions API)
 export const checkIOSMediaPermissions = async (): Promise<{
   video: 'granted' | 'denied' | 'prompt' | 'unknown'
   audio: 'granted' | 'denied' | 'prompt' | 'unknown'
@@ -66,10 +55,7 @@ export const checkIOSMediaPermissions = async (): Promise<{
   }
 }
 
-/**
- * Получает список доступных камер на iOS
- * Важно: требует предварительного получения разрешений
- */
+// Получить список камер (требует предварительного получения разрешений)
 export const getIOSCameras = async (): Promise<MediaDeviceInfo[]> => {
   try {
     const devices = await navigator.mediaDevices.enumerateDevices()
@@ -80,17 +66,12 @@ export const getIOSCameras = async (): Promise<MediaDeviceInfo[]> => {
   }
 }
 
-/**
- * Определяет, является ли камера фронтальной или задней по facingMode
- */
 export const getCameraFacingMode = (track: MediaStreamTrack): 'user' | 'environment' | 'unknown' => {
   const settings = track.getSettings()
   return (settings.facingMode as 'user' | 'environment') || 'unknown'
 }
 
-/**
- * Создает оптимальные constraints для iOS
- */
+// Оптимальные constraints для iOS (ideal вместо exact, deviceId ИЛИ facingMode)
 export const createIOSVideoConstraints = (options: {
   facingMode?: 'user' | 'environment'
   deviceId?: string
@@ -121,17 +102,12 @@ export const createIOSVideoConstraints = (options: {
   return constraints
 }
 
-/**
- * Ожидает небольшую задержку (нужно для стабильности на iOS Safari)
- */
+// Задержка для стабильности iOS Safari после stop()
 export const waitForIOSMediaStability = (ms: number = 100): Promise<void> => {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
-/**
- * Безопасное переключение камеры на iOS
- * Полностью останавливает старый трек перед созданием нового
- */
+// Переключение камеры: stop старого трека → пауза → getUserMedia нового
 export const switchIOSCamera = async (currentTrack: MediaStreamTrack | null, newConstraints: MediaTrackConstraints): Promise<MediaStreamTrack> => {
   // Останавливаем текущий трек
   if (currentTrack) {
@@ -149,9 +125,6 @@ export const switchIOSCamera = async (currentTrack: MediaStreamTrack | null, new
   return stream.getVideoTracks()[0]
 }
 
-/**
- * Хук для React-компонента, который запрашивает разрешения при монтировании
- */
 export const useIOSMediaPermissions = () => {
   if (typeof window === 'undefined') return null
 
@@ -164,9 +137,7 @@ export const useIOSMediaPermissions = () => {
   }
 }
 
-/**
- * Обработчик ошибок для iOS
- */
+// Классифицирует ошибки iOS и возвращает понятное сообщение для пользователя
 export const handleIOSMediaError = (
   error: any,
 ): {

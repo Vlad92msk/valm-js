@@ -1,6 +1,4 @@
-// types/speech-recognition.types.ts
 // Глобальные типы для Web Speech API
-
 declare global {
   interface Window {
     SpeechRecognition: typeof SpeechRecognition

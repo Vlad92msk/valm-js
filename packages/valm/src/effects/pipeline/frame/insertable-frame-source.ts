@@ -1,11 +1,6 @@
 import { IFrameSource } from '../../types'
 
-/**
- * InsertableFrameSource — захват кадров через Insertable Streams API
- *
- * Оптимизированная реализация для Chrome 94+, Edge 94+.
- * Меньше latency, прямой доступ к VideoFrame.
- */
+// Захват кадров через Insertable Streams API (Chrome 94+, Edge 94+)
 export class InsertableFrameSource implements IFrameSource {
   private processor: MediaStreamTrackProcessor | null = null
   private reader: ReadableStreamDefaultReader<VideoFrame> | null = null

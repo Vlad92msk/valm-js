@@ -1,17 +1,9 @@
-// ============================================
-// Effects — видео-эффекты, pipeline, ML провайдеры
-// Отдельный entry point, подключается через EffectsPlugin
-// ============================================
-
-// Plugin
 export { EffectsPlugin } from './effects-plugin'
 export type { EffectsPluginOptions } from './effects-plugin'
 
-// Controller
 export { EffectsController, EffectsEvents } from './effects.controller'
 export type { EffectsState, EffectsStateChangeCallback, EffectsErrorCallback } from './effects.controller'
 
-// Types
 export { EffectType, EffectFeature } from './types'
 export type { QualityPreset, PerformanceConfig, IVideoEffect, IVideoProcessingPipeline, FrameContext, IMLProvider } from './types'
 

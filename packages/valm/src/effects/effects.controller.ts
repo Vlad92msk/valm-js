@@ -1,12 +1,9 @@
-import { TypedEventEmitter } from '../core/utils/typed-event-emitter'
-import { MediaStreamService } from '../core/media-stream/media-stream.service'
+import { TypedEventEmitter } from '../core'
+import { MediaStreamService } from '../core/media-stream'
 import { BackgroundBlurEffect, BackgroundBlurParams, BlurMode } from './effects/background-blur-effect'
 import { BackgroundFitMode, VirtualBackgroundEffect, VirtualBackgroundParams } from './effects/virtual-background-effect'
 import { EffectType, IVideoEffect, IVideoProcessingPipeline, PerformanceConfig, PipelineState, QualityPreset } from './types'
 
-/**
- * Состояние эффектов
- */
 export interface EffectsState {
   isProcessingEnabled: boolean
   activeEffects: string[]
@@ -23,15 +20,9 @@ export interface EffectsState {
   performance?: PerformanceConfig
 }
 
-/**
- * Callbacks
- */
 export type EffectsStateChangeCallback = (state: EffectsState) => void
 export type EffectsErrorCallback = (error: { source: string; action?: string; error: unknown }) => void
 
-/**
- * События контроллера
- */
 export enum EffectsEvents {
   STATE_CHANGED = 'stateChanged',
   EFFECT_ENABLED = 'effectEnabled',
@@ -45,9 +36,6 @@ export enum EffectsEvents {
   PERFORMANCE_CHANGED = 'performance:changed',
 }
 
-/**
- * Типизированная карта событий EffectsController
- */
 interface EffectsEventMap {
   [EffectsEvents.STATE_CHANGED]: (state: EffectsState) => void
   [EffectsEvents.EFFECT_ENABLED]: (data: { effect: string }) => void
@@ -61,14 +49,6 @@ interface EffectsEventMap {
   [EffectsEvents.PERFORMANCE_CHANGED]: (config: PerformanceConfig) => void
 }
 
-/**
- * EffectsController — управление видео эффектами
- *
- * Предоставляет простой API для:
- * - Включения/выключения размытия фона
- * - Установки виртуального фона
- * - Управления параметрами эффектов
- */
 export class EffectsController extends TypedEventEmitter<EffectsEventMap> {
   private blurEffect: BackgroundBlurEffect | null = null
   private virtualBackgroundEffect: VirtualBackgroundEffect | null = null
@@ -80,9 +60,6 @@ export class EffectsController extends TypedEventEmitter<EffectsEventMap> {
     super()
   }
 
-  /**
-   * Получить pipeline. Бросает ошибку если pipeline не установлен.
-   */
   private requirePipeline(): IVideoProcessingPipeline {
     const pipeline = this.mediaStreamService.getVideoTrackManager().getPipeline()
     if (!pipeline) {
@@ -93,13 +70,7 @@ export class EffectsController extends TypedEventEmitter<EffectsEventMap> {
     return pipeline
   }
 
-  // ============================================
-  // Универсальное управление эффектами
-  // ============================================
-
-  /**
-   * Добавить кастомный эффект в pipeline
-   */
+  // Добавить эффект в pipeline
   addEffect = async (effect: IVideoEffect): Promise<void> => {
     try {
       const pipeline = this.requirePipeline()
@@ -114,9 +85,7 @@ export class EffectsController extends TypedEventEmitter<EffectsEventMap> {
     }
   }
 
-  /**
-   * Удалить эффект из pipeline по имени
-   */
+  // Удалить эффект по имени
   removeEffect = (name: string): void => {
     const pipeline = this.mediaStreamService.getVideoTrackManager().getPipeline()
     if (!pipeline) return
@@ -136,29 +105,17 @@ export class EffectsController extends TypedEventEmitter<EffectsEventMap> {
     this.notifyStateChange()
   }
 
-  /**
-   * Получить эффект по имени
-   */
   getEffect = <T extends IVideoEffect>(name: string): T | null => {
     const pipeline = this.mediaStreamService.getVideoTrackManager().getPipeline()
     return pipeline?.getEffect<T>(name) ?? null
   }
 
-  /**
-   * Получить все эффекты в pipeline
-   */
   getEffects = (): IVideoEffect[] => {
     const pipeline = this.mediaStreamService.getVideoTrackManager().getPipeline()
     return pipeline?.getEffects() ?? []
   }
 
-  // ============================================
-  // Background Blur
-  // ============================================
-
-  /**
-   * Включить размытие фона
-   */
+  // Включить размытие фона
   enableBlur = async (params?: Partial<BackgroundBlurParams>): Promise<void> => {
     try {
       const pipeline = this.requirePipeline()
@@ -182,9 +139,6 @@ export class EffectsController extends TypedEventEmitter<EffectsEventMap> {
     }
   }
 
-  /**
-   * Выключить размытие фона
-   */
   disableBlur = (): void => {
     if (this.blurEffect) {
       this.blurEffect.setEnabled(false)
@@ -193,9 +147,6 @@ export class EffectsController extends TypedEventEmitter<EffectsEventMap> {
     }
   }
 
-  /**
-   * Переключить размытие фона
-   */
   toggleBlur = async (): Promise<void> => {
     if (this.blurEffect?.isEnabled()) {
       this.disableBlur()
@@ -204,9 +155,7 @@ export class EffectsController extends TypedEventEmitter<EffectsEventMap> {
     }
   }
 
-  /**
-   * Установить интенсивность размытия (0-1)
-   */
+  // Интенсивность: 0-1
   setBlurIntensity = (intensity: number): void => {
     if (this.blurEffect) {
       this.blurEffect.updateParams({ intensity: Math.max(0, Math.min(1, intensity)) })
@@ -214,9 +163,6 @@ export class EffectsController extends TypedEventEmitter<EffectsEventMap> {
     }
   }
 
-  /**
-   * Установить режим размытия
-   */
   setBlurMode = (mode: BlurMode): void => {
     if (this.blurEffect) {
       this.blurEffect.updateParams({ mode })
@@ -224,20 +170,11 @@ export class EffectsController extends TypedEventEmitter<EffectsEventMap> {
     }
   }
 
-  /**
-   * Получить параметры blur
-   */
   getBlurParams = (): BackgroundBlurParams | null => {
     return this.blurEffect?.getParams() ?? null
   }
 
-  // ============================================
-  // Virtual Background
-  // ============================================
-
-  /**
-   * Установить виртуальный фон
-   */
+  // Установить виртуальный фон (отключает blur если активен)
   setVirtualBackground = async (imageUrl: string): Promise<void> => {
     try {
       const pipeline = this.requirePipeline()
@@ -264,9 +201,6 @@ export class EffectsController extends TypedEventEmitter<EffectsEventMap> {
     }
   }
 
-  /**
-   * Убрать виртуальный фон
-   */
   removeVirtualBackground = (): void => {
     if (this.virtualBackgroundEffect) {
       this.virtualBackgroundEffect.setEnabled(false)
@@ -277,9 +211,6 @@ export class EffectsController extends TypedEventEmitter<EffectsEventMap> {
     }
   }
 
-  /**
-   * Переключить виртуальный фон
-   */
   toggleVirtualBackground = async (imageUrl?: string): Promise<void> => {
     if (this.virtualBackgroundEffect?.isEnabled()) {
       this.removeVirtualBackground()
@@ -291,9 +222,7 @@ export class EffectsController extends TypedEventEmitter<EffectsEventMap> {
     }
   }
 
-  /**
-   * Установить цвет фона вместо изображения
-   */
+  // Установить цвет фона (вместо изображения)
   setVirtualBackgroundColor = async (color: string): Promise<void> => {
     try {
       const pipeline = this.requirePipeline()
@@ -327,9 +256,6 @@ export class EffectsController extends TypedEventEmitter<EffectsEventMap> {
     }
   }
 
-  /**
-   * Установить режим масштабирования фона
-   */
   setVirtualBackgroundFitMode = (mode: BackgroundFitMode): void => {
     if (this.virtualBackgroundEffect) {
       this.virtualBackgroundEffect.updateParams({ fitMode: mode })
@@ -337,9 +263,6 @@ export class EffectsController extends TypedEventEmitter<EffectsEventMap> {
     }
   }
 
-  /**
-   * Обновить параметры виртуального фона
-   */
   updateVirtualBackgroundParams = (params: Partial<VirtualBackgroundParams>): void => {
     if (this.virtualBackgroundEffect) {
       this.virtualBackgroundEffect.updateParams(params)
@@ -347,20 +270,10 @@ export class EffectsController extends TypedEventEmitter<EffectsEventMap> {
     }
   }
 
-  /**
-   * Получить параметры виртуального фона
-   */
   getVirtualBackgroundParams = (): VirtualBackgroundParams | null => {
     return this.virtualBackgroundEffect?.getParams() ?? null
   }
 
-  // ============================================
-  // Performance Settings
-  // ============================================
-
-  /**
-   * Установить пресет качества
-   */
   setQualityPreset = (preset: QualityPreset): void => {
     try {
       const pipeline = this.requirePipeline()
@@ -374,9 +287,6 @@ export class EffectsController extends TypedEventEmitter<EffectsEventMap> {
     }
   }
 
-  /**
-   * Установить кастомные настройки производительности
-   */
   setPerformanceConfig = (config: PerformanceConfig): void => {
     try {
       const pipeline = this.requirePipeline()
@@ -390,16 +300,10 @@ export class EffectsController extends TypedEventEmitter<EffectsEventMap> {
     }
   }
 
-  /**
-   * Получить текущие настройки производительности
-   */
   getPerformanceConfig = (): PerformanceConfig => {
     return this.requirePipeline().getPerformanceConfig()
   }
 
-  /**
-   * Установить качество blur (быстрый метод)
-   */
   setBlurQuality = (quality: number): void => {
     try {
       const pipeline = this.requirePipeline()
@@ -415,9 +319,6 @@ export class EffectsController extends TypedEventEmitter<EffectsEventMap> {
     }
   }
 
-  /**
-   * Установить целевой FPS (быстрый метод)
-   */
   setTargetFps = (fps: number): void => {
     try {
       const pipeline = this.requirePipeline()
@@ -433,13 +334,7 @@ export class EffectsController extends TypedEventEmitter<EffectsEventMap> {
     }
   }
 
-  // ============================================
-  // General
-  // ============================================
-
-  /**
-   * Выключить все эффекты (встроенные и кастомные)
-   */
+  // Выключить все эффекты
   disableAllEffects = (): void => {
     const effects = this.getEffects()
     for (const effect of effects) {
@@ -450,9 +345,7 @@ export class EffectsController extends TypedEventEmitter<EffectsEventMap> {
     this.notifyStateChange()
   }
 
-  /**
-   * Полностью остановить обработку видео — удаляет все эффекты из pipeline
-   */
+  // Удалить все эффекты из pipeline
   stopProcessing = (): void => {
     const pipeline = this.mediaStreamService.getVideoTrackManager().getPipeline()
 
@@ -471,9 +364,6 @@ export class EffectsController extends TypedEventEmitter<EffectsEventMap> {
     this.notifyStateChange()
   }
 
-  /**
-   * Получить состояние
-   */
   get state(): EffectsState {
     const pipeline = this.mediaStreamService.getVideoTrackManager().getPipeline()
     const pipelineState = pipeline?.getState()
@@ -496,40 +386,20 @@ export class EffectsController extends TypedEventEmitter<EffectsEventMap> {
     }
   }
 
-  /**
-   * Получить состояние pipeline
-   */
   getPipelineState = (): PipelineState | null => {
     return this.mediaStreamService.getVideoTrackManager().getPipeline()?.getState() ?? null
   }
 
-  // ============================================
-  // Subscriptions
-  // ============================================
-
-  /**
-   * Подписка на изменение состояния
-   */
   onStateChange = (callback: EffectsStateChangeCallback): VoidFunction => {
     this.stateCallbacks.add(callback)
     return () => this.stateCallbacks.delete(callback)
   }
 
-  /**
-   * Подписка на ошибки
-   */
   onError(callback: EffectsErrorCallback): VoidFunction {
     this.errorCallbacks.add(callback)
     return () => this.errorCallbacks.delete(callback)
   }
 
-  // ============================================
-  // Cleanup
-  // ============================================
-
-  /**
-   * Уничтожить контроллер
-   */
   destroy(): void {
     this.stopProcessing()
     this.stateCallbacks.clear()
@@ -537,22 +407,12 @@ export class EffectsController extends TypedEventEmitter<EffectsEventMap> {
     this.removeAllListeners()
   }
 
-  // ============================================
-  // Private
-  // ============================================
-
-  /**
-   * Уведомить об изменении состояния
-   */
   private notifyStateChange(): void {
     const currentState = this.state
     this.stateCallbacks.forEach((callback) => callback(currentState))
     this.emit(EffectsEvents.STATE_CHANGED, currentState)
   }
 
-  /**
-   * Уведомить об ошибке
-   */
   private notifyError(error: { source: string; action?: string; error: unknown }): void {
     this.errorCallbacks.forEach((callback) => callback(error))
     this.emit(EffectsEvents.ERROR, error)

@@ -1,5 +1,5 @@
 import { ErrorCallback, ScreenShareConfiguration, MediaErrorEvent, ScreenShareState, ScreenShareStateChangeCallback } from '../../types'
-import { ConfigurationService } from '../../configuration/configuration.service'
+import { ConfigurationService } from '../../configuration'
 import { ScreenShareService } from '../screen-share.service'
 
 export class ScreenShareController {
@@ -45,7 +45,6 @@ export class ScreenShareController {
     }
   }
 
-  // Configuration methods
   updateDisplaySurface = (surface: 'monitor' | 'window' | 'application'): void => {
     this.configService.updateScreenShareConfig({ preferDisplaySurface: surface })
   }
@@ -101,22 +100,18 @@ export class ScreenShareController {
     }
   }
 
-  // Get current configuration
   getConfiguration = (): ScreenShareConfiguration => {
     return this.configService.getScreenShareConfig()
   }
 
-  // Additional convenience methods
   updateConstraints = (constraints: Partial<ScreenShareConfiguration>): void => {
     this.configService.updateScreenShareConfig(constraints)
   }
 
-  // Get active track settings (from ScreenShareService)
   getActiveSettings = (): MediaTrackSettings | null => {
     return this.screenShareService.getActiveSettings()
   }
 
-  // Check if screen sharing is supported
   static checkCapabilities() {
     return ScreenShareService.checkCapabilities()
   }

@@ -1,4 +1,3 @@
-// types/callbacks.types.ts
 import { DevicesState } from './device.types'
 import { MediaErrorEvent, VolumeChangeEvent } from '../types'
 import { CameraState, MicrophoneState } from './media.types'

@@ -1,4 +1,3 @@
-// types/device.types.ts
 export interface DevicesState {
   cameras: MediaDeviceInfo[]
   microphones: MediaDeviceInfo[]

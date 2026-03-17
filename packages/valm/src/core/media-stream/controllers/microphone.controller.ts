@@ -8,7 +8,7 @@ import {
   VolumeChangeCallback,
   VolumeChangeEvent,
 } from '../../types'
-import { ConfigurationService } from '../../configuration/configuration.service'
+import { ConfigurationService } from '../../configuration'
 import { MediaStreamService } from '../media-stream.service'
 import { ConstraintsBuilderService } from '../constraints-builder.service'
 
@@ -69,10 +69,9 @@ export class MicrophoneController {
     }
   }
 
-  // Configuration methods
   updateAudioProcessing = async (options: { echoCancellation?: boolean; noiseSuppression?: boolean; autoGainControl?: boolean }): Promise<void> => {
     this.configService.setAudioProcessing(options)
-    // restart will be triggered by handleConfigurationChange via 'update' event
+    // restart произойдёт через handleConfigurationChange по событию 'update'
   }
 
   updateDevice = async (deviceId: string): Promise<void> => {
@@ -90,7 +89,6 @@ export class MicrophoneController {
     }
   }
 
-  // Enhanced enable method
   enable = async (deviceId?: string): Promise<void> => {
     try {
       if (deviceId) {
@@ -163,10 +161,7 @@ export class MicrophoneController {
     await this.enable()
   }
 
-  /**
-   * Создать preview трек для предпросмотра микрофона (настройки, тест уровня)
-   * Трек НЕ добавляется в основной stream
-   */
+  // Создать preview трек для предпросмотра (не добавляется в основной stream)
   preview = async (deviceId?: string): Promise<MediaStreamTrack> => {
     this.stopPreview()
 
@@ -186,10 +181,7 @@ export class MicrophoneController {
     }
   }
 
-  /**
-   * Опубликовать preview трек в основной stream
-   * После вызова preview трек становится основным треком микрофона
-   */
+  // Опубликовать preview трек в основной stream
   publishPreview = async (): Promise<void> => {
     if (!this.previewTrack) {
       throw new Error('No preview track to publish. Call preview() first.')
@@ -210,9 +202,7 @@ export class MicrophoneController {
     }
   }
 
-  /**
-   * Остановить preview трек без публикации
-   */
+  // Остановить preview без публикации
   stopPreview = (): void => {
     if (this.previewTrack) {
       this.previewTrack.stop()
