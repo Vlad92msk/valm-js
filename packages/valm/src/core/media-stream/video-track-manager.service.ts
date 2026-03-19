@@ -1,8 +1,8 @@
 import { VideoConfiguration } from '../configuration/configuration.types'
-import { isIOS } from '../utils/ios-media.helper'
-import { TypedEventEmitter } from '../utils/typed-event-emitter'
+import { DeviceDetector } from '../utils'
+import { TypedEventEmitter } from '../utils'
 import { ConstraintsBuilderService } from './constraints-builder.service'
-import { IVideoProcessingPipeline } from '../../effects/types'
+import { IVideoProcessingPipeline } from '../../effects'
 
 export enum VideoTrackEvents {
   TRACK_ADDED = 'trackAdded',
@@ -210,8 +210,10 @@ export class VideoTrackManagerService extends TypedEventEmitter<VideoTrackEventM
     const currentAbortController = this.abortController
 
     const switchOperation = (async () => {
-      if (isIOS()) {
-        await this.replaceTrackIOS(currentAbortController, deviceId)
+      if (DeviceDetector.isMobile()) {
+        // На мобильных устройствах останавливаем старый трек ДО getUserMedia —
+        // многие устройства не поддерживают два активных camera-трека одновременно
+        await this.replaceTrackMobile(currentAbortController, deviceId)
       } else if (this.isTrackActive()) {
         await this.replaceTrack(currentAbortController, deviceId)
       } else if (this.isEnabled) {
@@ -352,7 +354,7 @@ export class VideoTrackManagerService extends TypedEventEmitter<VideoTrackEventM
   }
 
   // iOS: stop старого трека до получения нового (ограничение Safari)
-  private async replaceTrackIOS(abortController?: AbortController, deviceId?: string): Promise<void> {
+  private async replaceTrackMobile(abortController?: AbortController, deviceId?: string): Promise<void> {
     const oldOutputTrack = this.getOutputTrack()
     const wasMuted = this.isMuted
 

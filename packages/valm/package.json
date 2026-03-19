@@ -1,6 +1,6 @@
 {
   "name": "valm-js",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "description": "Browser media stream manager — camera, microphone, screen share, recording, transcription, and video effects",
   "keywords": [
     "media",
