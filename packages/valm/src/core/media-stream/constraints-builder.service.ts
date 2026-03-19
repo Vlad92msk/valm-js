@@ -49,7 +49,7 @@ export class ConstraintsBuilderService {
     return {
       deviceId: config.deviceId ? { exact: config.deviceId } : undefined,
       facingMode: !config.deviceId && config.facingMode
-        ? { exact: config.facingMode }
+        ? { ideal: config.facingMode }
         : undefined,
       width: config.resolution.width,
       height: config.resolution.height,
