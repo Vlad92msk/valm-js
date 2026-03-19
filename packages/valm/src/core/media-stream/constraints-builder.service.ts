@@ -29,7 +29,7 @@ export class ConstraintsBuilderService {
     if (config.deviceId) {
       constraints.deviceId = { exact: config.deviceId }
     } else if (config.facingMode) {
-      constraints.facingMode = config.facingMode
+      constraints.facingMode = { exact: config.facingMode }
     }
 
     // На iOS не используем exact для разрешения, только ideal
@@ -48,7 +48,9 @@ export class ConstraintsBuilderService {
   private static buildStandardVideoConstraints(config: VideoConfiguration): MediaTrackConstraints {
     return {
       deviceId: config.deviceId ? { exact: config.deviceId } : undefined,
-      facingMode: config.facingMode,
+      facingMode: !config.deviceId && config.facingMode
+        ? { exact: config.facingMode }
+        : undefined,
       width: config.resolution.width,
       height: config.resolution.height,
       frameRate: config.frameRate,

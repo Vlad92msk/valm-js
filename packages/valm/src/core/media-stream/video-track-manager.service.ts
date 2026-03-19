@@ -427,7 +427,7 @@ export class VideoTrackManagerService extends TypedEventEmitter<VideoTrackEventM
       this.lastEmittedState.isEnabled !== currentState.isEnabled ||
       this.lastEmittedState.isMuted !== currentState.isMuted ||
       this.lastEmittedState.deviceId !== currentState.deviceId ||
-      !!this.lastEmittedState.track !== !!currentState.track
+      this.lastEmittedState.track !== currentState.track
 
     if (changed) {
       this.lastEmittedState = {
