@@ -29,7 +29,7 @@ export class ConstraintsBuilderService {
     if (config.deviceId) {
       constraints.deviceId = { exact: config.deviceId }
     } else if (config.facingMode) {
-      constraints.facingMode = { exact: config.facingMode }
+      constraints.facingMode = config.facingMode
     }
 
     // На iOS не используем exact для разрешения, только ideal
