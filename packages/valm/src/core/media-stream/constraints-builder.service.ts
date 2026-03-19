@@ -48,9 +48,7 @@ export class ConstraintsBuilderService {
   private static buildStandardVideoConstraints(config: VideoConfiguration): MediaTrackConstraints {
     return {
       deviceId: config.deviceId ? { exact: config.deviceId } : undefined,
-      facingMode: !config.deviceId && config.facingMode
-        ? { ideal: config.facingMode }
-        : undefined,
+      facingMode: config.facingMode,
       width: config.resolution.width,
       height: config.resolution.height,
       frameRate: config.frameRate,
