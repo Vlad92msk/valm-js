@@ -55,6 +55,9 @@ export class BackgroundBlurEffect extends BaseEffect<BackgroundBlurParams> {
   private tempCanvas: HTMLCanvasElement | null = null
   private tempCtx: CanvasRenderingContext2D | null = null
 
+  // Переиспользуемый ImageData для маски (только alpha обновляется каждый кадр)
+  private maskImageData: ImageData | null = null
+
   private lastWidth = 0
   private lastHeight = 0
 
@@ -85,23 +88,26 @@ export class BackgroundBlurEffect extends BaseEffect<BackgroundBlurParams> {
     this.ensureCanvases(width, height)
     if (!this.blurCtx || !this.tempCtx || !this.blurCanvas || !this.tempCanvas) return
 
-    // Применяем размытие разными способами
+    // 1. Blur source → blurCanvas
     if (this.useFilterBlur) {
       this.applyFilterBlur(sourceCanvas, width, height)
     } else {
       this.applyBoxBlurOptimized(sourceCanvas, width, height)
     }
 
-    // Рисуем размытый фон на output
+    // 2. Blurred image → output (base layer)
     outputCtx.drawImage(this.blurCanvas, 0, 0, width, height)
 
-    // Накладываем чёткую область по маске
-    const sourceImageData = ctx.sourceCtx.getImageData(0, 0, width, height)
-    const outputImageData = outputCtx.getImageData(0, 0, width, height)
+    // 3. Mask → tempCanvas (alpha = sharp region)
+    this.drawMask(segmentationMask, width, height)
 
-    this.applyMaskHard(sourceImageData.data, outputImageData.data, segmentationMask, width, height)
+    // 4. Source × mask → tempCanvas (source-in оставляет только пиксели где mask alpha > 0)
+    this.tempCtx.globalCompositeOperation = 'source-in'
+    this.tempCtx.drawImage(sourceCanvas, 0, 0)
+    this.tempCtx.globalCompositeOperation = 'source-over'
 
-    outputCtx.putImageData(outputImageData, 0, 0)
+    // 5. Sharp cutout → output (поверх размытого фона)
+    outputCtx.drawImage(this.tempCanvas, 0, 0)
   }
 
   dispose(): void {
@@ -119,6 +125,7 @@ export class BackgroundBlurEffect extends BaseEffect<BackgroundBlurParams> {
 
     this.blurCtx = null
     this.tempCtx = null
+    this.maskImageData = null
   }
 
   // CSS filter (десктоп — быстрее)
@@ -223,7 +230,6 @@ export class BackgroundBlurEffect extends BaseEffect<BackgroundBlurParams> {
     this.blurCanvas.width = width
     this.blurCanvas.height = height
     this.blurCtx = this.blurCanvas.getContext('2d', {
-      willReadFrequently: true,
       alpha: false,
     })
 
@@ -232,35 +238,40 @@ export class BackgroundBlurEffect extends BaseEffect<BackgroundBlurParams> {
     }
     this.tempCanvas.width = width
     this.tempCanvas.height = height
-    this.tempCtx = this.tempCanvas.getContext('2d', {
-      alpha: false,
-    })
+    // alpha: true — нужна прозрачность для compositing маски
+    this.tempCtx = this.tempCanvas.getContext('2d')
 
     this.lastWidth = width
     this.lastHeight = height
+    this.maskImageData = null
   }
 
-  private applyMaskHard(
-      sourceData: Uint8ClampedArray,
-      outputData: Uint8ClampedArray,
-      mask: Uint8Array,
-      width: number,
-      height: number
-  ): void {
-    const length = width * height
+  // Рисует маску сегментации на tempCanvas как alpha-канал.
+  // Sharp region → alpha=255, blurred region → alpha=0.
+  // Переиспользует ImageData: R/G/B=255 заполняются один раз, alpha обновляется каждый кадр.
+  private drawMask(mask: Uint8Array, width: number, height: number): void {
+    if (!this.tempCtx) return
 
-    for (let i = 0; i < length; i++) {
-      const pixelIndex = i * 4
-      const isForeground = mask[i] === 0
-
-      const shouldUseSharp = this.params.mode === BlurMode.BACKGROUND ? isForeground : !isForeground
-
-      if (shouldUseSharp) {
-        outputData[pixelIndex] = sourceData[pixelIndex]
-        outputData[pixelIndex + 1] = sourceData[pixelIndex + 1]
-        outputData[pixelIndex + 2] = sourceData[pixelIndex + 2]
-        outputData[pixelIndex + 3] = 255
+    if (!this.maskImageData || this.maskImageData.width !== width || this.maskImageData.height !== height) {
+      this.maskImageData = new ImageData(width, height)
+      // R/G/B = 255 — заполняем один раз, дальше обновляем только alpha
+      const data = this.maskImageData.data
+      for (let i = 0; i < data.length; i += 4) {
+        data[i] = 255
+        data[i + 1] = 255
+        data[i + 2] = 255
       }
     }
+
+    const data = this.maskImageData.data
+    const length = width * height
+    const isBackground = this.params.mode === BlurMode.BACKGROUND
+
+    for (let i = 0; i < length; i++) {
+      const isForeground = mask[i] === 0
+      data[i * 4 + 3] = (isBackground ? isForeground : !isForeground) ? 255 : 0
+    }
+
+    this.tempCtx.putImageData(this.maskImageData, 0, 0)
   }
 }

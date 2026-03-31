@@ -68,6 +68,9 @@ export class VirtualBackgroundEffect extends BaseEffect<VirtualBackgroundParams>
   private tempCanvas: HTMLCanvasElement | null = null
   private tempCtx: CanvasRenderingContext2D | null = null
 
+  // Переиспользуемый ImageData для маски (R/G/B=255 один раз, alpha обновляется каждый кадр)
+  private maskImageData: ImageData | null = null
+
   private lastWidth = 0
   private lastHeight = 0
 
@@ -107,20 +110,23 @@ export class VirtualBackgroundEffect extends BaseEffect<VirtualBackgroundParams>
     // 2. Копируем фон на output
     outputCtx.drawImage(this.backgroundCanvas, 0, 0, width, height)
 
-    // 3. Применяем размытие краёв маски если нужно
-    const processedMask = this.params.edgeBlur > 0 ? this.blurMask(segmentationMask, width, height, this.params.edgeBlur) : segmentationMask
+    // 3. Маска → tempCanvas (alpha = foreground region)
+    this.drawMask(segmentationMask, width, height)
 
-    // 4. Накладываем человека по маске
-    const sourceImageData = ctx.sourceCtx.getImageData(0, 0, width, height)
-    const outputImageData = outputCtx.getImageData(0, 0, width, height)
-
-    if (this.params.edgeSmoothing) {
-      this.applyMaskWithSmoothing(sourceImageData.data, outputImageData.data, processedMask, width, height)
-    } else {
-      this.applyMaskHard(sourceImageData.data, outputImageData.data, processedMask, width, height)
+    // 4. Если нужно размытие краёв — blur прямо на tempCanvas (GPU-ускоренный)
+    if (this.params.edgeBlur > 0) {
+      this.tempCtx!.filter = `blur(${this.params.edgeBlur}px)`
+      this.tempCtx!.drawImage(this.tempCanvas!, 0, 0)
+      this.tempCtx!.filter = 'none'
     }
 
-    outputCtx.putImageData(outputImageData, 0, 0)
+    // 5. Source × mask → tempCanvas (source-in оставляет только пиксели где alpha > 0)
+    this.tempCtx!.globalCompositeOperation = 'source-in'
+    this.tempCtx!.drawImage(sourceCanvas, 0, 0)
+    this.tempCtx!.globalCompositeOperation = 'source-over'
+
+    // 6. Sharp cutout → output (поверх фона)
+    outputCtx.drawImage(this.tempCanvas!, 0, 0)
   }
 
   dispose(): void {
@@ -161,22 +167,20 @@ export class VirtualBackgroundEffect extends BaseEffect<VirtualBackgroundParams>
     this.backgroundCanvas.width = width
     this.backgroundCanvas.height = height
     this.backgroundCtx = this.backgroundCanvas.getContext('2d', {
-      willReadFrequently: true,
       alpha: false,
     })
 
-    // Temp canvas
+    // Temp canvas (alpha: true — нужна прозрачность для compositing маски)
     if (!this.tempCanvas) {
       this.tempCanvas = document.createElement('canvas')
     }
     this.tempCanvas.width = width
     this.tempCanvas.height = height
-    this.tempCtx = this.tempCanvas.getContext('2d', {
-      alpha: false,
-    })
+    this.tempCtx = this.tempCanvas.getContext('2d')
 
     this.lastWidth = width
     this.lastHeight = height
+    this.maskImageData = null
   }
 
   private async loadBackgroundImage(url: string): Promise<void> {
@@ -305,71 +309,39 @@ export class VirtualBackgroundEffect extends BaseEffect<VirtualBackgroundParams>
     }
   }
 
-  private blurMask(mask: Uint8Array, width: number, height: number, blurRadius: number): Uint8Array {
-    if (!this.tempCanvas || !this.tempCtx) return mask
+  // Рисует маску сегментации на tempCanvas как alpha-канал.
+  // Foreground → alpha=255, background → alpha=0.
+  // Переиспользует ImageData: R/G/B=255 заполняются один раз, alpha обновляется каждый кадр.
+  private drawMask(mask: Uint8Array, width: number, height: number): void {
+    if (!this.tempCtx) return
 
-    // Создаём imageData из маски
-    const imageData = this.tempCtx.createImageData(width, height)
-    for (let i = 0; i < mask.length; i++) {
-      const val = mask[i]
-      imageData.data[i * 4] = val
-      imageData.data[i * 4 + 1] = val
-      imageData.data[i * 4 + 2] = val
-      imageData.data[i * 4 + 3] = 255
-    }
-
-    this.tempCtx.putImageData(imageData, 0, 0)
-
-    // Применяем blur через filter
-    this.tempCtx.filter = `blur(${blurRadius}px)`
-    this.tempCtx.drawImage(this.tempCanvas, 0, 0)
-    this.tempCtx.filter = 'none'
-
-    // Читаем обратно
-    const blurred = this.tempCtx.getImageData(0, 0, width, height)
-    const result = new Uint8Array(mask.length)
-    for (let i = 0; i < mask.length; i++) {
-      result[i] = blurred.data[i * 4]
-    }
-
-    return result
-  }
-
-  // Без сглаживания (быстрее)
-  private applyMaskHard(sourceData: Uint8ClampedArray, outputData: Uint8ClampedArray, mask: Uint8Array, width: number, height: number): void {
-    const length = width * height
-
-    for (let i = 0; i < length; i++) {
-      const pixelIndex = i * 4
-      const isForeground = mask[i] === 0
-
-      if (isForeground) {
-        outputData[pixelIndex] = sourceData[pixelIndex]
-        outputData[pixelIndex + 1] = sourceData[pixelIndex + 1]
-        outputData[pixelIndex + 2] = sourceData[pixelIndex + 2]
-        outputData[pixelIndex + 3] = 255
+    if (!this.maskImageData || this.maskImageData.width !== width || this.maskImageData.height !== height) {
+      this.maskImageData = new ImageData(width, height)
+      // R/G/B = 255 — заполняем один раз, дальше обновляем только alpha
+      const data = this.maskImageData.data
+      for (let i = 0; i < data.length; i += 4) {
+        data[i] = 255
+        data[i + 1] = 255
+        data[i + 2] = 255
       }
     }
-  }
 
-  // Со сглаживанием краёв (качественнее)
-  private applyMaskWithSmoothing(sourceData: Uint8ClampedArray, outputData: Uint8ClampedArray, mask: Uint8Array, width: number, height: number): void {
+    const data = this.maskImageData.data
     const length = width * height
-    const threshold = this.params.smoothingThreshold
 
-    for (let i = 0; i < length; i++) {
-      const pixelIndex = i * 4
-      const maskValue = mask[i] / 255
-
-      // Foreground (человек) имеет низкое значение маски
-      const alpha = maskValue < threshold ? 1 : Math.max(0, (threshold - maskValue) / threshold)
-
-      if (alpha > 0) {
-        outputData[pixelIndex] = sourceData[pixelIndex] * alpha + outputData[pixelIndex] * (1 - alpha)
-        outputData[pixelIndex + 1] = sourceData[pixelIndex + 1] * alpha + outputData[pixelIndex + 1] * (1 - alpha)
-        outputData[pixelIndex + 2] = sourceData[pixelIndex + 2] * alpha + outputData[pixelIndex + 2] * (1 - alpha)
-        outputData[pixelIndex + 3] = 255
+    if (this.params.edgeSmoothing) {
+      const threshold = this.params.smoothingThreshold
+      for (let i = 0; i < length; i++) {
+        const maskValue = mask[i] / 255
+        // Foreground (человек) имеет низкое значение маски
+        data[i * 4 + 3] = maskValue < threshold ? 255 : 0
+      }
+    } else {
+      for (let i = 0; i < length; i++) {
+        data[i * 4 + 3] = mask[i] === 0 ? 255 : 0
       }
     }
+
+    this.tempCtx.putImageData(this.maskImageData, 0, 0)
   }
 }
