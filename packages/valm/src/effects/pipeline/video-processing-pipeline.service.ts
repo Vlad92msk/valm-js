@@ -7,6 +7,12 @@ import { FrameContext, IFrameOutput, IFrameSource, IVideoEffect, IVideoProcessin
 type InternalPipelineConfig = PipelineConfig & { width: number; height: number; processorType: 'auto' | 'canvas' | 'insertable-streams'; performance: PerformanceConfig }
 
 export const QUALITY_PRESETS: Record<Exclude<QualityPreset, 'custom'>, Required<Omit<PerformanceConfig, 'preset'>>> = {
+  mobile: {
+    mlFrameSkip: 4, // ML: ~6fps
+    targetFps: 24, // Render: 24fps
+    blurQuality: 6, // Минимальный blur
+    mlResolutionScale: 0.5, // 50% разрешения — экономит 75% пикселей
+  },
   low: {
     mlFrameSkip: 3, // ML: 10fps
     targetFps: 24, // Render: 24fps
@@ -68,6 +74,8 @@ export class VideoProcessingPipelineService implements IVideoProcessingPipeline 
   // State
   private running = false
   private animationFrameId: number | null = null
+  private isProcessingFrame = false
+  private pendingDimensions: { width: number; height: number } | null = null
   private boundHandleDimensionsChanged: (dimensions: { width: number; height: number }) => void
 
   // Performance
@@ -81,6 +89,13 @@ export class VideoProcessingPipelineService implements IVideoProcessingPipeline 
   private frameCount = 0
   private fpsUpdateTime = 0
   private currentFps = 0
+
+  // Adaptive performance
+  private adaptiveEnabled = true
+  private lowFpsCount = 0
+  private adaptiveCheckInterval = 5000 // 5 секунд
+  private lastAdaptiveCheck = 0
+  private static readonly PRESET_DOWNGRADE_CHAIN: ReadonlyArray<Exclude<QualityPreset, 'custom'>> = ['ultra', 'high', 'medium', 'low', 'mobile']
 
   constructor(config: PipelineConfig = {}) {
     this.boundHandleDimensionsChanged = this.handleDimensionsChanged.bind(this)
@@ -152,6 +167,8 @@ export class VideoProcessingPipelineService implements IVideoProcessingPipeline 
     this.running = true
     this.lastFrameTime = performance.now()
     this.fpsUpdateTime = this.lastFrameTime
+    this.lastAdaptiveCheck = this.lastFrameTime
+    this.lowFpsCount = 0
     this.frameCount = 0
 
     this.scheduleNextFrame()
@@ -159,6 +176,16 @@ export class VideoProcessingPipelineService implements IVideoProcessingPipeline 
 
   // Обработчик изменения размеров
   private handleDimensionsChanged(dimensions: { width: number; height: number }): void {
+    // Если идёт обработка кадра (await detect) — откладываем resize до конца кадра
+    if (this.isProcessingFrame) {
+      this.pendingDimensions = dimensions
+      return
+    }
+
+    this.applyDimensionsChange(dimensions)
+  }
+
+  private applyDimensionsChange(dimensions: { width: number; height: number }): void {
     this.config.width = dimensions.width
     this.config.height = dimensions.height
 
@@ -310,10 +337,20 @@ export class VideoProcessingPipelineService implements IVideoProcessingPipeline 
 
     this.lastFrameTime = now - (elapsed % this.frameInterval)
 
+    this.isProcessingFrame = true
     try {
       await this.renderFrame(now)
     } catch (error) {
       console.error('Frame processing error:', error)
+    } finally {
+      this.isProcessingFrame = false
+
+      // Применяем отложенное изменение размеров, если было
+      if (this.pendingDimensions) {
+        const dims = this.pendingDimensions
+        this.pendingDimensions = null
+        this.applyDimensionsChange(dims)
+      }
     }
 
     // Обновляем FPS
@@ -323,6 +360,9 @@ export class VideoProcessingPipelineService implements IVideoProcessingPipeline 
       this.frameCount = 0
       this.fpsUpdateTime = now
     }
+
+    // Adaptive performance check
+    this.checkAdaptivePerformance(now)
 
     this.scheduleNextFrame()
   }
@@ -350,7 +390,10 @@ export class VideoProcessingPipelineService implements IVideoProcessingPipeline 
 
     // 3. ML-детекция: полная каждый N-й кадр, кэш на остальных
     const runML = this.mlFrameCounter++ % this.mlFrameSkip === 0
-    const mlResults = runML ? await this.providers.detect(this.captureImageData(), timestamp) : this.providers.getCachedResults()
+    const shouldSkipCapture = runML && this.providers.wouldReturnCache()
+    const mlResults = runML && !shouldSkipCapture
+      ? await this.providers.detect(this.captureImageData(), timestamp)
+      : this.providers.getCachedResults()
 
     let segmentation = mlResults.segmentation
 
@@ -448,6 +491,46 @@ export class VideoProcessingPipelineService implements IVideoProcessingPipeline 
         currentSourceCtx = currentOutputCtx
       }
     }
+  }
+
+  private checkAdaptivePerformance(now: number): void {
+    if (!this.adaptiveEnabled) return
+
+    // Проверяем каждые adaptiveCheckInterval мс
+    if (now - this.lastAdaptiveCheck < this.adaptiveCheckInterval) return
+    this.lastAdaptiveCheck = now
+
+    // Не проверяем пока FPS не стабилизировался (нужна хотя бы 1 секунда данных)
+    if (this.currentFps === 0) return
+
+    const activeConfig = this.resolvePerformanceConfig(this.config.performance)
+    const targetFps = activeConfig.targetFps
+
+    if (this.currentFps < targetFps * 0.7) {
+      this.lowFpsCount++
+
+      // Требуем 2 последовательных проверки с низким FPS (= ~10 секунд)
+      if (this.lowFpsCount >= 2) {
+        this.downgradePreset()
+        this.lowFpsCount = 0
+      }
+    } else {
+      this.lowFpsCount = 0
+    }
+  }
+
+  private downgradePreset(): void {
+    const currentPreset = this.config.performance.preset || 'medium'
+    if (currentPreset === 'custom') return
+
+    const chain = VideoProcessingPipelineService.PRESET_DOWNGRADE_CHAIN
+    const currentIndex = chain.indexOf(currentPreset)
+
+    // Уже на самом лёгком preset
+    if (currentIndex === -1 || currentIndex >= chain.length - 1) return
+
+    const nextPreset = chain[currentIndex + 1]
+    this.setPerformanceConfig({ preset: nextPreset })
   }
 
   private initializeCanvases(): void {

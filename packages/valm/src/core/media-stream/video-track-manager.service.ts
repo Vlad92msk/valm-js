@@ -46,6 +46,9 @@ export class VideoTrackManagerService extends TypedEventEmitter<VideoTrackEventM
   private pendingSwitch: Promise<void> | null = null
   private abortController: AbortController | null = null
 
+  private isResuming = false
+  private suspendAfterResume = false
+
   private lastEmittedState: VideoTrackState | null = null
 
   constructor(private getConfig: () => VideoConfiguration) {
@@ -170,6 +173,60 @@ export class VideoTrackManagerService extends TypedEventEmitter<VideoTrackEventM
     if (this.pipeline) {
       this.pipeline.stop()
       this.pipeline = null
+    }
+  }
+
+  // Приостановить pipeline и переключиться на оригинальный трек
+  suspendPipeline(): void {
+    // Если pipeline ещё стартует (resumePipeline в процессе) —
+    // планируем suspend после завершения start()
+    if (this.isResuming) {
+      this.suspendAfterResume = true
+      return
+    }
+
+    if (!this.pipeline?.isRunning() || !this.track) return
+
+    const oldOutputTrack = this.getOutputTrack()
+    this.pipeline.stop()
+    const newOutputTrack = this.getOutputTrack() // вернёт this.track
+
+    if (oldOutputTrack && newOutputTrack && oldOutputTrack !== newOutputTrack) {
+      this.emit(VideoTrackEvents.TRACK_REPLACED, {
+        track: newOutputTrack,
+        oldTrack: oldOutputTrack,
+      })
+    }
+  }
+
+  // Возобновить pipeline (при включении эффекта)
+  async resumePipeline(): Promise<void> {
+    if (!this.pipeline || this.pipeline.isRunning() || !this.track) return
+
+    this.isResuming = true
+    this.suspendAfterResume = false
+
+    const oldOutputTrack = this.getOutputTrack()
+
+    try {
+      await this.pipeline.start(this.track)
+    } finally {
+      this.isResuming = false
+    }
+
+    const newOutputTrack = this.getOutputTrack()
+
+    if (oldOutputTrack && newOutputTrack && oldOutputTrack !== newOutputTrack) {
+      this.emit(VideoTrackEvents.TRACK_REPLACED, {
+        track: newOutputTrack,
+        oldTrack: oldOutputTrack,
+      })
+    }
+
+    // Если suspendPipeline() вызвали пока start() был в процессе — выполняем сейчас
+    if (this.suspendAfterResume) {
+      this.suspendAfterResume = false
+      this.suspendPipeline()
     }
   }
 
@@ -399,11 +456,22 @@ export class VideoTrackManagerService extends TypedEventEmitter<VideoTrackEventM
     // Снимаем слушатель
     endedTrack.removeEventListener('ended', this.handleTrackEnded)
 
+    // Запоминаем output трек ДО остановки pipeline —
+    // приложение держит именно его, а не raw трек камеры
+    const outputTrack = this.getOutputTrack()
+
+    // Останавливаем pipeline — source мёртв, нет смысла крутить rAF loop
+    if (this.pipeline?.isRunning()) {
+      this.pipeline.stop()
+    }
+
     this.track = null
     this.isEnabled = false
     this.isMuted = false
 
-    this.emit(VideoTrackEvents.TRACK_REMOVED, { track: endedTrack })
+    if (outputTrack) {
+      this.emit(VideoTrackEvents.TRACK_REMOVED, { track: outputTrack })
+    }
     this.emitStateIfChanged()
   }
 

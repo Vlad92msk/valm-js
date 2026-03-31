@@ -77,6 +77,17 @@ export class MLProvidersManager {
     return { segmentation, faceMesh }
   }
 
+  wouldReturnCache(): boolean {
+    const providers: IMLProvider<unknown, unknown>[] = []
+    if (this.requiredFeatures.has(EffectFeature.SEGMENTATION) && this.segmentationProvider?.isReady()) {
+      providers.push(this.segmentationProvider)
+    }
+    if (this.requiredFeatures.has(EffectFeature.FACE_MESH) && this.faceMeshProvider?.isReady()) {
+      providers.push(this.faceMeshProvider)
+    }
+    return providers.length > 0 && providers.every((p) => p.wouldReturnCache())
+  }
+
   getCachedResults(): MLDetectionResult {
     return {
       segmentation: this.segmentationProvider?.getLastResult() || null,

@@ -74,6 +74,7 @@ export class EffectsController extends TypedEventEmitter<EffectsEventMap> {
   addEffect = async (effect: IVideoEffect): Promise<void> => {
     try {
       const pipeline = this.requirePipeline()
+      await this.mediaStreamService.getVideoTrackManager().resumePipeline()
       await pipeline.addEffect(effect)
 
       this.emit(EffectsEvents.EFFECT_ADDED, { effect: effect.name })
@@ -102,6 +103,7 @@ export class EffectsController extends TypedEventEmitter<EffectsEventMap> {
 
     this.emit(EffectsEvents.EFFECT_REMOVED, { effect: name })
     this.emit(EffectsEvents.EFFECT_DISABLED, { effect: name })
+    this.maybeSuspendPipeline()
     this.notifyStateChange()
   }
 
@@ -119,6 +121,7 @@ export class EffectsController extends TypedEventEmitter<EffectsEventMap> {
   enableBlur = async (params?: Partial<BackgroundBlurParams>): Promise<void> => {
     try {
       const pipeline = this.requirePipeline()
+      await this.mediaStreamService.getVideoTrackManager().resumePipeline()
 
       if (!this.blurEffect) {
         this.blurEffect = new BackgroundBlurEffect(params)
@@ -143,6 +146,7 @@ export class EffectsController extends TypedEventEmitter<EffectsEventMap> {
     if (this.blurEffect) {
       this.blurEffect.setEnabled(false)
       this.emit(EffectsEvents.EFFECT_DISABLED, { effect: EffectType.BACKGROUND_BLUR })
+      this.maybeSuspendPipeline()
       this.notifyStateChange()
     }
   }
@@ -178,6 +182,7 @@ export class EffectsController extends TypedEventEmitter<EffectsEventMap> {
   setVirtualBackground = async (imageUrl: string): Promise<void> => {
     try {
       const pipeline = this.requirePipeline()
+      await this.mediaStreamService.getVideoTrackManager().resumePipeline()
 
       if (!this.virtualBackgroundEffect) {
         this.virtualBackgroundEffect = new VirtualBackgroundEffect({ imageUrl })
@@ -205,9 +210,8 @@ export class EffectsController extends TypedEventEmitter<EffectsEventMap> {
     if (this.virtualBackgroundEffect) {
       this.virtualBackgroundEffect.setEnabled(false)
       this.emit(EffectsEvents.EFFECT_DISABLED, { effect: EffectType.VIRTUAL_BACKGROUND })
+      this.maybeSuspendPipeline()
       this.notifyStateChange()
-
-      // НЕ останавливаем pipeline
     }
   }
 
@@ -226,6 +230,7 @@ export class EffectsController extends TypedEventEmitter<EffectsEventMap> {
   setVirtualBackgroundColor = async (color: string): Promise<void> => {
     try {
       const pipeline = this.requirePipeline()
+      await this.mediaStreamService.getVideoTrackManager().resumePipeline()
 
       if (!this.virtualBackgroundEffect) {
         this.virtualBackgroundEffect = new VirtualBackgroundEffect({
@@ -341,7 +346,7 @@ export class EffectsController extends TypedEventEmitter<EffectsEventMap> {
       effect.setEnabled(false)
     }
 
-    // НЕ останавливаем pipeline - он всегда работает
+    this.maybeSuspendPipeline()
     this.notifyStateChange()
   }
 
@@ -360,6 +365,7 @@ export class EffectsController extends TypedEventEmitter<EffectsEventMap> {
     this.blurEffect = null
     this.virtualBackgroundEffect = null
 
+    this.maybeSuspendPipeline()
     this.emit(EffectsEvents.PROCESSING_STOPPED)
     this.notifyStateChange()
   }
@@ -405,6 +411,13 @@ export class EffectsController extends TypedEventEmitter<EffectsEventMap> {
     this.stateCallbacks.clear()
     this.errorCallbacks.clear()
     this.removeAllListeners()
+  }
+
+  private maybeSuspendPipeline(): void {
+    const hasActive = this.getEffects().some((e) => e.isEnabled())
+    if (!hasActive) {
+      this.mediaStreamService.getVideoTrackManager().suspendPipeline()
+    }
   }
 
   private notifyStateChange(): void {

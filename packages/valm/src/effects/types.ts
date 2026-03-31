@@ -60,6 +60,7 @@ export interface IMLProvider<TConfig = unknown, TResult = unknown> {
   initialize(config?: TConfig): Promise<void>
   detect(imageData: ImageData, timestamp?: number): Promise<TResult>
   getLastResult(): TResult | null
+  wouldReturnCache(): boolean
   isReady(): boolean
   clearCache(): void
   dispose(): Promise<void>
@@ -121,8 +122,8 @@ export interface IFrameOutput {
   getContext(): CanvasRenderingContext2D
   dispose(): void
 
-  // Принудительно генерирует новый кадр (для Safari)
-  requestFrame?(): void
+  // Генерирует новый кадр — вызывается pipeline после каждого рендера
+  requestFrame(): void
 
   resize(width: number, height: number): void
 }
@@ -160,7 +161,7 @@ declare global {
   }
 }
 
-export type QualityPreset = 'low' | 'medium' | 'high' | 'ultra' | 'custom'
+export type QualityPreset = 'mobile' | 'low' | 'medium' | 'high' | 'ultra' | 'custom'
 
 export interface PerformanceConfig {
   preset?: QualityPreset

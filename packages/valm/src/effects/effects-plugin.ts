@@ -1,12 +1,15 @@
 import { IMediaPlugin, PluginContext } from '../core'
 import { EffectsController } from './effects.controller'
 import { CustomProvidersConfig } from './pipeline/ml-providers-manager'
-import { EffectFeature } from './types'
+import { EffectFeature, PerformanceConfig } from './types'
 import { VideoProcessingPipelineService } from './pipeline/video-processing-pipeline.service'
 
 export interface EffectsPluginOptions {
   // Кастомные ML-провайдеры вместо встроенных MediaPipe
   providers?: CustomProvidersConfig
+
+  // Performance preset и параметры (по умолчанию — 'medium')
+  performance?: PerformanceConfig
 }
 
 export class EffectsPlugin implements IMediaPlugin {
@@ -38,7 +41,9 @@ export class EffectsPlugin implements IMediaPlugin {
 
   install(context: PluginContext): void {
     // Создаём pipeline и устанавливаем в видео-менеджер
-    this._pipeline = new VideoProcessingPipelineService()
+    this._pipeline = new VideoProcessingPipelineService(
+      this._options.performance ? { performance: this._options.performance } : undefined,
+    )
     const videoManager = context.mediaStreamService.getVideoTrackManager()
     videoManager.setPipeline(this._pipeline)
 

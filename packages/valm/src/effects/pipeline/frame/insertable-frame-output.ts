@@ -7,16 +7,8 @@ export class InsertableFrameOutput implements IFrameOutput {
   private ctx: CanvasRenderingContext2D | null = null
   private generator: MediaStreamTrackGenerator | null = null
   private writer: WritableStreamDefaultWriter<VideoFrame> | null = null
-  private fps: number = 30
-  private frameInterval: number = 0
-  private lastFrameTime: number = 0
-  private isRunning = false
-  private animationFrameId: number | null = null
 
   initialize(width: number, height: number, fps: number): void {
-    this.fps = fps
-    this.frameInterval = 1000 / fps
-
     // Canvas для рисования
     this.canvas = document.createElement('canvas')
     this.canvas.width = width
@@ -34,44 +26,6 @@ export class InsertableFrameOutput implements IFrameOutput {
     // Создаём generator
     this.generator = new MediaStreamTrackGenerator({ kind: 'video' })
     this.writer = this.generator.writable.getWriter()
-
-    // Запускаем отправку кадров
-    this.isRunning = true
-    this.startFrameLoop()
-  }
-
-  private startFrameLoop(): void {
-    const sendFrame = async () => {
-      if (!this.isRunning || !this.canvas || !this.writer) return
-
-      const now = performance.now()
-
-      // Throttle по FPS
-      if (now - this.lastFrameTime >= this.frameInterval) {
-        this.lastFrameTime = now
-
-        try {
-          // Создаём VideoFrame из canvas
-          const frame = new VideoFrame(this.canvas, {
-            timestamp: now * 1000, // микросекунды
-          })
-
-          await this.writer.write(frame)
-          frame.close()
-        } catch (error) {
-          // Игнорируем ошибки при закрытии
-          if ((error as Error).name !== 'InvalidStateError') {
-            console.error('InsertableFrameOutput write error:', error)
-          }
-        }
-      }
-
-      if (this.isRunning) {
-        this.animationFrameId = requestAnimationFrame(sendFrame)
-      }
-    }
-
-    sendFrame()
   }
 
   getTrack(): MediaStreamTrack | null {
@@ -99,16 +53,33 @@ export class InsertableFrameOutput implements IFrameOutput {
     this.canvas.height = height
   }
 
-  requestFrame(): void {}
+  // Вызывается pipeline после отрисовки кадра на canvas —
+  // создаём VideoFrame и отправляем в generator
+  requestFrame(): void {
+    if (!this.canvas || !this.writer) return
+
+    try {
+      const frame = new VideoFrame(this.canvas, {
+        timestamp: performance.now() * 1000,
+      })
+
+      this.writer.write(frame).then(
+        () => frame.close(),
+        (error) => {
+          frame.close()
+          if ((error as Error).name !== 'InvalidStateError') {
+            console.error('InsertableFrameOutput write error:', error)
+          }
+        },
+      )
+    } catch (error) {
+      if ((error as Error).name !== 'InvalidStateError') {
+        console.error('InsertableFrameOutput frame creation error:', error)
+      }
+    }
+  }
 
   dispose(): void {
-    this.isRunning = false
-
-    if (this.animationFrameId !== null) {
-      cancelAnimationFrame(this.animationFrameId)
-      this.animationFrameId = null
-    }
-
     if (this.writer) {
       this.writer.close().catch(() => {})
       this.writer = null

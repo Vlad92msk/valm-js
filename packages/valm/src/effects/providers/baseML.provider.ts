@@ -62,6 +62,12 @@ export abstract class BaseMLProvider<TConfig, TResult> implements IMLProvider<TC
     return this.pendingPromise
   }
 
+  wouldReturnCache(): boolean {
+    if (!this.cacheEnabled) return false
+    const now = performance.now()
+    return (now - this.lastCallTime) < this.minInterval && this.lastResult !== null
+  }
+
   getLastResult(): TResult | null {
     return this.lastResult
   }
