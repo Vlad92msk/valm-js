@@ -95,6 +95,16 @@ const MoreTab = ({ media, onError }: MoreTabProps) => {
     }
   }, [media, onError])
 
+  const handleImportConfig = useCallback(async () => {
+    onError(null)
+    try {
+      const json = await navigator.clipboard.readText()
+      media.configurationController.importConfig(json)
+    } catch (e) {
+      showError(e)
+    }
+  }, [media, onError])
+
   const handleResetConfig = useCallback(() => {
     media.configurationController.resetAll()
   }, [media])
@@ -157,6 +167,9 @@ const MoreTab = ({ media, onError }: MoreTabProps) => {
         <div className={cn('controlRowActions')}>
           <button type="button" className={cn('actionBtn', { small: true })} onClick={handleExportConfig}>
             Copy JSON
+          </button>
+          <button type="button" className={cn('actionBtn', { small: true })} onClick={handleImportConfig}>
+            Paste JSON
           </button>
           <button type="button" className={cn('actionBtn', { small: true, variant: 'danger' })} onClick={handleResetConfig}>
             Reset all

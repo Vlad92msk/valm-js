@@ -101,6 +101,21 @@ const DevicesTab = ({ media, onError }: DevicesTabProps) => {
     unsubs.push(media.cameraController.onError(handleError))
     unsubs.push(media.microphoneController.onError(handleError))
 
+    const syncConfigToState = () => {
+      const videoConfig = media.configurationController.getVideoConfig()
+      setResolution(`${videoConfig.resolution.width}x${videoConfig.resolution.height}`)
+      setFrameRate(videoConfig.frameRate)
+      setFacingMode(videoConfig.facingMode)
+
+      const audioConfig = media.configurationController.getAudioConfig()
+      setEchoCancellation(audioConfig.echoCancellation)
+      setNoiseSuppression(audioConfig.noiseSuppression)
+      setAutoGainControl(audioConfig.autoGainControl)
+    }
+
+    unsubs.push(media.configurationController.onImport(syncConfigToState))
+    unsubs.push(media.configurationController.onReset(syncConfigToState))
+
     media.devicesController.getAvailable().then((devices) => {
       setCameras(devices.cameras)
       setMicrophones(devices.microphones)

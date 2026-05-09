@@ -138,6 +138,9 @@
       width: 0;
       background: transparent;
     }
+    &--hidden {
+      display: none;
+    }
   }
 
   // ── Preview ──

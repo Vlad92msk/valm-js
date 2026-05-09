@@ -47,9 +47,11 @@ export const Tabs = ({ tabs, activeTab: controlledTab, onTabChange }: TabsProps)
           ))}
         </div>
       )}
-      <div className={cn('tabPanel')} key={activeTab}>
-        {tabs.find((t) => t.id === activeTab)?.content}
-      </div>
+      {tabs.map((tab) => (
+        <div key={tab.id} className={cn('tabPanel', { hidden: activeTab !== tab.id })}>
+          {tab.content}
+        </div>
+      ))}
     </>
   )
 }

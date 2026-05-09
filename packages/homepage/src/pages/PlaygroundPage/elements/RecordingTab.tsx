@@ -83,6 +83,15 @@ const RecordingTab = ({ media, onError }: RecordingTabProps) => {
       ),
     )
 
+    const syncConfigToState = () => {
+      const config = media.configurationController.getRecordingConfig()
+      setRecordingQuality(config.quality)
+      setRecordingFormat(config.format)
+    }
+
+    unsubs.push(media.configurationController.onImport(syncConfigToState))
+    unsubs.push(media.configurationController.onReset(syncConfigToState))
+
     return () => unsubs.forEach((fn) => fn())
   }, [media, onError])
 

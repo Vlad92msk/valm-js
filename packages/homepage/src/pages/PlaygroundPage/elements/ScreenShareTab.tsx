@@ -51,6 +51,17 @@ const ScreenShareTab = ({ media, onError }: ScreenShareTabProps) => {
       onError(`${event.source}: ${event.error instanceof Error ? event.error.message : String(event.error)}`)
     unsubs.push(media.screenShareController.onError(handleError))
 
+    const syncConfigToState = () => {
+      const config = media.configurationController.getScreenShareConfig()
+      setDisplaySurface(config.preferDisplaySurface)
+      setIncludeAudio(config.includeAudio)
+      if (config.mode) setScreenShareMode(config.mode)
+      if (config.contentHint !== undefined) setContentHint(config.contentHint)
+    }
+
+    unsubs.push(media.configurationController.onImport(syncConfigToState))
+    unsubs.push(media.configurationController.onReset(syncConfigToState))
+
     return () => unsubs.forEach((fn) => fn())
   }, [media, onError])
 
