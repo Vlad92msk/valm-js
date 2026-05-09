@@ -18,29 +18,11 @@ interface SubtitleEntry {
   timestamp: number
 }
 
-const PlaygroundPage = () => {
-  const videoRef = useRef<HTMLVideoElement>(null)
-  const screenVideoRef = useRef<HTMLVideoElement>(null)
-
-  const [media, setMedia] = useState<Valm | null>(null)
-  const [error, setError] = useState<string | null>(null)
-
-  // Preview state
-  const [cameraEnabled, setCameraEnabled] = useState(false)
-  const [screenShareActive, setScreenShareActive] = useState(false)
-  const [activeVideoTab, setActiveVideoTab] = useState<'camera' | 'screen'>('camera')
-
-  // Subtitles
-  const [transcripts, setTranscripts] = useState<SubtitleEntry[]>([])
-  const [interimTranscript, setInterimTranscript] = useState('')
-
-  // ── Initialize ──
-  useEffect(() => {
-    const m = new Valm()
-
-    const isMobile = DeviceDetector.isMobile()
-    const mlProviderOptions = { minInterval: isMobile ? 100 : 33, cacheEnabled: true }
-    m.use(new EffectsPlugin({
+function createValm(): Valm {
+  const isMobile = DeviceDetector.isMobile()
+  const mlProviderOptions = { minInterval: isMobile ? 100 : 33, cacheEnabled: true }
+  return new Valm().use(
+    new EffectsPlugin({
       providers: {
         segmentation: new SegmentationProvider({
           ...mlProviderOptions,
@@ -48,33 +30,43 @@ const PlaygroundPage = () => {
         }),
         faceMesh: new FaceMeshProvider(mlProviderOptions),
       },
-    }))
+    }),
+  )
+}
 
-    const unsubs: Array<() => void> = []
+const PlaygroundPage = () => {
+  const videoRef = useRef<HTMLVideoElement>(null)
+  const screenVideoRef = useRef<HTMLVideoElement>(null)
 
-    // Camera state for preview
-    unsubs.push(
+  const [media, setMedia] = useState<Valm | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [cameraEnabled, setCameraEnabled] = useState(false)
+  const [screenShareActive, setScreenShareActive] = useState(false)
+  const [activeVideoTab, setActiveVideoTab] = useState<'camera' | 'screen'>('camera')
+  const [transcripts, setTranscripts] = useState<SubtitleEntry[]>([])
+  const [interimTranscript, setInterimTranscript] = useState('')
+
+  useEffect(() => {
+    const m = createValm()
+
+    const unsubs = [
       m.cameraController.onStateChange((state) => {
         setCameraEnabled(state.isEnabled)
+        if (videoRef.current) {
+          videoRef.current.srcObject = state.isEnabled ? m.cameraController.getStream() : null
+        }
       }),
-    )
-    unsubs.push(
       m.cameraController.onTrackReplaced(() => {
         if (videoRef.current && m.cameraController.state.isEnabled) {
           videoRef.current.srcObject = m.cameraController.getStream()
         }
       }),
-    )
-
-    // Screen share state for preview
-    unsubs.push(
       m.screenShareController.onStateChange((state) => {
         setScreenShareActive(state.isActive)
+        if (screenVideoRef.current) {
+          screenVideoRef.current.srcObject = state.isActive ? m.screenShareController.getStream() : null
+        }
       }),
-    )
-
-    // Transcription for subtitles
-    unsubs.push(
       m.transcriptionController.onTranscript((item) => {
         if (item.isFinal) {
           setTranscripts((prev) => [...prev, { text: item.text, timestamp: item.timestamp }])
@@ -83,7 +75,7 @@ const PlaygroundPage = () => {
           setInterimTranscript(item.text)
         }
       }),
-    )
+    ]
 
     setMedia(m)
 
@@ -93,29 +85,6 @@ const PlaygroundPage = () => {
     }
   }, [])
 
-  // Sync camera video
-  useEffect(() => {
-    if (!videoRef.current || !media) return
-    if (cameraEnabled) {
-      const stream = media.cameraController.getStream()
-      if (stream) videoRef.current.srcObject = stream
-    } else {
-      videoRef.current.srcObject = null
-    }
-  }, [media, cameraEnabled])
-
-  // Sync screen share video
-  useEffect(() => {
-    if (!screenVideoRef.current || !media) return
-    if (screenShareActive) {
-      const stream = media.screenShareController.getStream()
-      if (stream) screenVideoRef.current.srcObject = stream
-    } else {
-      screenVideoRef.current.srcObject = null
-    }
-  }, [media, screenShareActive])
-
-  // Auto-switch video tab when screen share stops
   useEffect(() => {
     if (!screenShareActive && activeVideoTab === 'screen') {
       setActiveVideoTab('camera')
