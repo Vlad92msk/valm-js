@@ -214,9 +214,9 @@ export class RecordingService extends TypedEventEmitter<RecordingEventMap> {
       }
     })
 
-    this.mediaRecorder.addEventListener('error', (event) => {
+    this.mediaRecorder.addEventListener('error', ((event: ErrorEvent) => {
       this.emit('recordingError', event.error)
-    })
+    }) as EventListener)
   }
 
   destroy(): void {

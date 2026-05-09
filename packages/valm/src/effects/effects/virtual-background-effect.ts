@@ -1,5 +1,6 @@
 import { EffectFeature, EffectType, FrameContext } from '../types'
 import { BaseEffect } from './base-effect'
+import { WebGLCompositor } from './webgl-compositor'
 
 export enum BackgroundFitMode {
   STRETCH = 'stretch',
@@ -65,17 +66,15 @@ export class VirtualBackgroundEffect extends BaseEffect<VirtualBackgroundParams>
   // Рабочие canvas
   private backgroundCanvas: HTMLCanvasElement | null = null
   private backgroundCtx: CanvasRenderingContext2D | null = null
-  private tempCanvas: HTMLCanvasElement | null = null
-  private tempCtx: CanvasRenderingContext2D | null = null
-
-  // Переиспользуемый ImageData для маски (R/G/B=255 один раз, alpha обновляется каждый кадр)
-  private maskImageData: ImageData | null = null
 
   private lastWidth = 0
   private lastHeight = 0
 
+  private compositor: WebGLCompositor
+
   constructor(params: Partial<VirtualBackgroundParams> = {}) {
     super({ ...DEFAULT_PARAMS, ...params })
+    this.compositor = new WebGLCompositor()
   }
 
   async initialize(): Promise<void> {
@@ -102,48 +101,34 @@ export class VirtualBackgroundEffect extends BaseEffect<VirtualBackgroundParams>
 
     // Инициализируем canvas если нужно
     this.ensureCanvases(width, height)
-    if (!this.backgroundCtx || !this.tempCtx || !this.backgroundCanvas || !this.tempCanvas) return
+    if (!this.backgroundCtx || !this.backgroundCanvas) return
 
     // 1. Рисуем фон (изображение или цвет)
     this.drawBackground(width, height)
 
-    // 2. Копируем фон на output
-    outputCtx.drawImage(this.backgroundCanvas, 0, 0, width, height)
-
-    // 3. Маска → tempCanvas (alpha = foreground region)
-    this.drawMask(segmentationMask, width, height)
-
-    // 4. Если нужно размытие краёв — blur прямо на tempCanvas (GPU-ускоренный)
-    if (this.params.edgeBlur > 0) {
-      this.tempCtx!.filter = `blur(${this.params.edgeBlur}px)`
-      this.tempCtx!.drawImage(this.tempCanvas!, 0, 0)
-      this.tempCtx!.filter = 'none'
-    }
-
-    // 5. Source × mask → tempCanvas (source-in оставляет только пиксели где alpha > 0)
-    this.tempCtx!.globalCompositeOperation = 'source-in'
-    this.tempCtx!.drawImage(sourceCanvas, 0, 0)
-    this.tempCtx!.globalCompositeOperation = 'source-over'
-
-    // 6. Sharp cutout → output (поверх фона)
-    outputCtx.drawImage(this.tempCanvas!, 0, 0)
+    // 2. WebGL compositing
+    this.compositor.composite({
+      source: sourceCanvas,
+      background: this.backgroundCanvas,
+      mask: segmentationMask,
+      width, height,
+      threshold: this.params.edgeSmoothing ? this.params.smoothingThreshold : 0.004,
+      edgeWidth: this.params.edgeSmoothing ? (this.params.edgeBlur * 0.01) : 0.001,
+      invertMask: false,
+    })
+    this.compositor.drawTo(outputCtx)
   }
 
   dispose(): void {
+    this.compositor.dispose()
+
     if (this.backgroundCanvas) {
       this.backgroundCanvas.width = 0
       this.backgroundCanvas.height = 0
       this.backgroundCanvas = null
     }
 
-    if (this.tempCanvas) {
-      this.tempCanvas.width = 0
-      this.tempCanvas.height = 0
-      this.tempCanvas = null
-    }
-
     this.backgroundCtx = null
-    this.tempCtx = null
     this.backgroundImage = null
     this.pendingImageUrl = null
   }
@@ -170,17 +155,8 @@ export class VirtualBackgroundEffect extends BaseEffect<VirtualBackgroundParams>
       alpha: false,
     })
 
-    // Temp canvas (alpha: true — нужна прозрачность для compositing маски)
-    if (!this.tempCanvas) {
-      this.tempCanvas = document.createElement('canvas')
-    }
-    this.tempCanvas.width = width
-    this.tempCanvas.height = height
-    this.tempCtx = this.tempCanvas.getContext('2d')
-
     this.lastWidth = width
     this.lastHeight = height
-    this.maskImageData = null
   }
 
   private async loadBackgroundImage(url: string): Promise<void> {
@@ -309,39 +285,4 @@ export class VirtualBackgroundEffect extends BaseEffect<VirtualBackgroundParams>
     }
   }
 
-  // Рисует маску сегментации на tempCanvas как alpha-канал.
-  // Foreground → alpha=255, background → alpha=0.
-  // Переиспользует ImageData: R/G/B=255 заполняются один раз, alpha обновляется каждый кадр.
-  private drawMask(mask: Uint8Array, width: number, height: number): void {
-    if (!this.tempCtx) return
-
-    if (!this.maskImageData || this.maskImageData.width !== width || this.maskImageData.height !== height) {
-      this.maskImageData = new ImageData(width, height)
-      // R/G/B = 255 — заполняем один раз, дальше обновляем только alpha
-      const data = this.maskImageData.data
-      for (let i = 0; i < data.length; i += 4) {
-        data[i] = 255
-        data[i + 1] = 255
-        data[i + 2] = 255
-      }
-    }
-
-    const data = this.maskImageData.data
-    const length = width * height
-
-    if (this.params.edgeSmoothing) {
-      const threshold = this.params.smoothingThreshold
-      for (let i = 0; i < length; i++) {
-        const maskValue = mask[i] / 255
-        // Foreground (человек) имеет низкое значение маски
-        data[i * 4 + 3] = maskValue < threshold ? 255 : 0
-      }
-    } else {
-      for (let i = 0; i < length; i++) {
-        data[i * 4 + 3] = mask[i] === 0 ? 255 : 0
-      }
-    }
-
-    this.tempCtx.putImageData(this.maskImageData, 0, 0)
-  }
 }

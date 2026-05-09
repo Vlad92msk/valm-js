@@ -1,6 +1,7 @@
 import { ConfigurationService } from '../configuration'
 
-import { MediaErrorEvent, ScreenShareState } from '../types'
+import { MediaErrorEvent, ScreenShareConfiguration, ScreenShareState } from '../types'
+import { SCREEN_SHARE_MODE_PRESETS } from './mixins/screen-share-config.mixin'
 import { TypedEventEmitter } from '../utils'
 
 interface ScreenShareEventMap {
@@ -20,10 +21,19 @@ export class ScreenShareService extends TypedEventEmitter<ScreenShareEventMap> {
     super()
   }
 
+  private resolveConfig(config: ScreenShareConfiguration) {
+    const modePreset = SCREEN_SHARE_MODE_PRESETS[config.mode || 'presentation']
+    return {
+      ...config,
+      maxFrameRate: config.maxFrameRate ?? modePreset.maxFrameRate,
+      contentHint: config.contentHint ?? modePreset.contentHint,
+    }
+  }
+
   async startScreenShare(): Promise<void> {
     try {
       // Берем настройки из ConfigurationService
-      const config = this.configService.getScreenShareConfig()
+      const config = this.resolveConfig(this.configService.getScreenShareConfig())
 
       const constraints = {
         video: {
@@ -53,7 +63,7 @@ export class ScreenShareService extends TypedEventEmitter<ScreenShareEventMap> {
   private setupStreamHandlers(): void {
     if (!this.stream) return
 
-    const config = this.configService.getScreenShareConfig()
+    const config = this.resolveConfig(this.configService.getScreenShareConfig())
 
     // Сохраняем ссылку на handler для последующей отписки
     this.trackEndedHandler = () => this.handleTrackEnded()

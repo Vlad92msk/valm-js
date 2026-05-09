@@ -174,6 +174,13 @@ export class EffectsController extends TypedEventEmitter<EffectsEventMap> {
     }
   }
 
+  updateBlurParams = (params: Partial<BackgroundBlurParams>): void => {
+    if (this.blurEffect) {
+      this.blurEffect.updateParams(params)
+      this.notifyStateChange()
+    }
+  }
+
   getBlurParams = (): BackgroundBlurParams | null => {
     return this.blurEffect?.getParams() ?? null
   }

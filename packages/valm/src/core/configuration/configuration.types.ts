@@ -38,18 +38,23 @@ export interface AudioConfiguration {
   constraints: MediaTrackConstraints
 }
 
+/** Режим трансляции экрана: 'presentation' — слайды/текст (лёгкий), 'video' — фильмы/видео (плавный) */
+export type ScreenShareMode = 'presentation' | 'video'
+
 export interface ScreenShareConfiguration {
   /** Предпочтительная поверхность для захвата */
   preferDisplaySurface: 'monitor' | 'window' | 'application'
   /** Захватывать ли системный звук */
   includeAudio: boolean
+  /** Режим трансляции — определяет оптимальные frameRate и contentHint */
+  mode?: ScreenShareMode
   /** Максимальная ширина (undefined = без ограничений) */
   maxWidth?: number
   /** Максимальная высота (undefined = без ограничений) */
   maxHeight?: number
-  /** Максимальная частота кадров (undefined = без ограничений) */
+  /** Максимальная частота кадров (если не задано — берётся из mode) */
   maxFrameRate?: number
-  // Подсказка кодеку: 'motion' — видео, 'detail' — презентации, 'text' — только текст
+  /** Подсказка кодеку (если не задано — берётся из mode): 'motion' — видео, 'detail' — презентации, 'text' — только текст */
   contentHint?: 'motion' | 'detail' | 'text' | ''
 }
 

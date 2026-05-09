@@ -1,4 +1,4 @@
-import { ErrorCallback, ScreenShareConfiguration, MediaErrorEvent, ScreenShareState, ScreenShareStateChangeCallback } from '../../types'
+import { ErrorCallback, ScreenShareConfiguration, ScreenShareMode, MediaErrorEvent, ScreenShareState, ScreenShareStateChangeCallback } from '../../types'
 import { ConfigurationService } from '../../configuration'
 import { ScreenShareService } from '../screen-share.service'
 
@@ -63,6 +63,10 @@ export class ScreenShareController {
 
   updateContentHint = (contentHint: 'motion' | 'detail' | 'text' | ''): void => {
     this.configService.updateScreenShareConfig({ contentHint })
+  }
+
+  updateMode = (mode: ScreenShareMode): void => {
+    this.configService.updateScreenShareConfig({ mode })
   }
 
   private async restart(): Promise<void> {

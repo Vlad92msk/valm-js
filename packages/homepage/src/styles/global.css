@@ -11,8 +11,8 @@
 
 :root {
   /* ── Colors ──────────────────────────────────────── */
-  --color-bg:        hsl(60 2.7% 14.5% / 1);
-  --color-surface:   hsl(60 2.7% 18% / 1);
+  --color-bg:        hsl(60, 2%, 11%);
+  --color-surface:   hsl(60, 1%, 17%);
   --color-surface-2: hsl(60 2.7% 16% / 1);
   --color-border:    hsl(50 9% 25% / 1);
   --color-text:      hsl(50 9% 73.7% / 1);

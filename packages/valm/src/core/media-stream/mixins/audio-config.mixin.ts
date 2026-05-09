@@ -12,8 +12,17 @@ export const DEFAULT_AUDIO_CONFIG: AudioConfiguration = {
   constraints: {},
 }
 
-export function WithAudioConfiguration<T extends Constructor<BaseConfigurationService>>(Base: T) {
-  return class AudioConfigMixin extends Base {
+export interface AudioConfigMixin {
+  getAudioConfig(): AudioConfiguration
+  updateAudioConfig(updates: Partial<AudioConfiguration>): void
+  setAudioDevice(deviceId: string | null): void
+  setAudioProcessing(options: { echoCancellation?: boolean; noiseSuppression?: boolean; autoGainControl?: boolean }): void
+  toggleAudioEnabled(): boolean
+  resetAudioConfig(): void
+}
+
+export function WithAudioConfiguration<T extends Constructor<BaseConfigurationService>>(Base: T): T & Constructor<AudioConfigMixin> {
+  return class extends Base {
     protected getDefaultConfig() {
       return {
         ...super.getDefaultConfig(),
@@ -69,7 +78,7 @@ export function WithAudioConfiguration<T extends Constructor<BaseConfigurationSe
       this.config.audio = this.deepClone(this.getDefaultConfig().audio)
       this.emitChange('audio', 'reset', oldConfig, this.config.audio)
     }
-  }
+  } as any
 }
 
 export interface AudioEvents {

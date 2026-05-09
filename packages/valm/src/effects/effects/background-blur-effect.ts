@@ -1,6 +1,7 @@
 import { DeviceDetector } from '../../core'
 import { EffectFeature, EffectType, FrameContext } from '../types'
 import { BaseEffect } from './base-effect'
+import { WebGLCompositor } from './webgl-compositor'
 
 export enum BlurMode {
   BACKGROUND = 'background',
@@ -55,9 +56,6 @@ export class BackgroundBlurEffect extends BaseEffect<BackgroundBlurParams> {
   private tempCanvas: HTMLCanvasElement | null = null
   private tempCtx: CanvasRenderingContext2D | null = null
 
-  // Переиспользуемый ImageData для маски (только alpha обновляется каждый кадр)
-  private maskImageData: ImageData | null = null
-
   private lastWidth = 0
   private lastHeight = 0
 
@@ -66,9 +64,12 @@ export class BackgroundBlurEffect extends BaseEffect<BackgroundBlurParams> {
   // Максимальный радиус blur, управляется pipeline через quality presets
   private maxBlurRadius = 20
 
+  private compositor: WebGLCompositor
+
   constructor(params: Partial<BackgroundBlurParams> = {}) {
     super({ ...DEFAULT_PARAMS, ...params })
     this.useFilterBlur = supportsFilterBlur()
+    this.compositor = new WebGLCompositor()
   }
 
   setBlurRadius(radius: number): void {
@@ -95,22 +96,22 @@ export class BackgroundBlurEffect extends BaseEffect<BackgroundBlurParams> {
       this.applyBoxBlurOptimized(sourceCanvas, width, height)
     }
 
-    // 2. Blurred image → output (base layer)
-    outputCtx.drawImage(this.blurCanvas, 0, 0, width, height)
-
-    // 3. Mask → tempCanvas (alpha = sharp region)
-    this.drawMask(segmentationMask, width, height)
-
-    // 4. Source × mask → tempCanvas (source-in оставляет только пиксели где mask alpha > 0)
-    this.tempCtx.globalCompositeOperation = 'source-in'
-    this.tempCtx.drawImage(sourceCanvas, 0, 0)
-    this.tempCtx.globalCompositeOperation = 'source-over'
-
-    // 5. Sharp cutout → output (поверх размытого фона)
-    outputCtx.drawImage(this.tempCanvas, 0, 0)
+    // 2. WebGL compositing
+    this.compositor.composite({
+      source: sourceCanvas,
+      background: this.blurCanvas,
+      mask: segmentationMask,
+      width, height,
+      threshold: this.params.edgeSmoothing ? this.params.smoothingThreshold : 0.004,
+      edgeWidth: this.params.edgeSmoothing ? 0.01 : 0.001,
+      invertMask: this.params.mode !== BlurMode.BACKGROUND,
+    })
+    this.compositor.drawTo(outputCtx)
   }
 
   dispose(): void {
+    this.compositor.dispose()
+
     if (this.blurCanvas) {
       this.blurCanvas.width = 0
       this.blurCanvas.height = 0
@@ -125,7 +126,6 @@ export class BackgroundBlurEffect extends BaseEffect<BackgroundBlurParams> {
 
     this.blurCtx = null
     this.tempCtx = null
-    this.maskImageData = null
   }
 
   // CSS filter (десктоп — быстрее)
@@ -243,35 +243,5 @@ export class BackgroundBlurEffect extends BaseEffect<BackgroundBlurParams> {
 
     this.lastWidth = width
     this.lastHeight = height
-    this.maskImageData = null
-  }
-
-  // Рисует маску сегментации на tempCanvas как alpha-канал.
-  // Sharp region → alpha=255, blurred region → alpha=0.
-  // Переиспользует ImageData: R/G/B=255 заполняются один раз, alpha обновляется каждый кадр.
-  private drawMask(mask: Uint8Array, width: number, height: number): void {
-    if (!this.tempCtx) return
-
-    if (!this.maskImageData || this.maskImageData.width !== width || this.maskImageData.height !== height) {
-      this.maskImageData = new ImageData(width, height)
-      // R/G/B = 255 — заполняем один раз, дальше обновляем только alpha
-      const data = this.maskImageData.data
-      for (let i = 0; i < data.length; i += 4) {
-        data[i] = 255
-        data[i + 1] = 255
-        data[i + 2] = 255
-      }
-    }
-
-    const data = this.maskImageData.data
-    const length = width * height
-    const isBackground = this.params.mode === BlurMode.BACKGROUND
-
-    for (let i = 0; i < length; i++) {
-      const isForeground = mask[i] === 0
-      data[i * 4 + 3] = (isBackground ? isForeground : !isForeground) ? 255 : 0
-    }
-
-    this.tempCtx.putImageData(this.maskImageData, 0, 0)
   }
 }

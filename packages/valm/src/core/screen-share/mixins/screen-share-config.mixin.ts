@@ -1,17 +1,26 @@
-import { ConfigurationChangeEvent, ScreenShareConfiguration } from '../../types'
+import { ConfigurationChangeEvent, ScreenShareConfiguration, ScreenShareMode } from '../../types'
 import { BaseConfigurationService, Constructor } from '../../configuration/mixins/base.mixin'
+
+export const SCREEN_SHARE_MODE_PRESETS: Record<ScreenShareMode, { contentHint: 'motion' | 'text'; maxFrameRate: number }> = {
+  presentation: { contentHint: 'text', maxFrameRate: 5 },
+  video: { contentHint: 'motion', maxFrameRate: 30 },
+}
 
 export const DEFAULT_SCREENSHARE_CONFIG: ScreenShareConfiguration = {
   preferDisplaySurface: 'monitor',
   includeAudio: false,
   maxWidth: 1920,
   maxHeight: 1080,
-  maxFrameRate: 30,
-  contentHint: 'detail',
+  mode: 'presentation',
 }
 
-export function WithScreenShareConfiguration<T extends Constructor<BaseConfigurationService>>(Base: T) {
-  return class ScreenShareConfigMixin extends Base {
+export interface ScreenShareConfigMixin {
+  getScreenShareConfig(): ScreenShareConfiguration
+  updateScreenShareConfig(updates: Partial<ScreenShareConfiguration>): void
+}
+
+export function WithScreenShareConfiguration<T extends Constructor<BaseConfigurationService>>(Base: T): T & Constructor<ScreenShareConfigMixin> {
+  return class extends Base {
     protected getDefaultConfig() {
       return {
         ...super.getDefaultConfig(),
@@ -44,7 +53,7 @@ export function WithScreenShareConfiguration<T extends Constructor<BaseConfigura
       })
       this.emitChange('screenShare', 'update', oldConfig, this.config.screenShare)
     }
-  }
+  } as any
 }
 
 export interface ScreenShareEvents {

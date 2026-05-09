@@ -10,8 +10,18 @@ export const DEFAULT_VIDEO_CONFIG: VideoConfiguration = {
   constraints: {},
 }
 
-export function WithVideoConfiguration<T extends Constructor<BaseConfigurationService>>(Base: T) {
-  return class VideoConfigMixin extends Base {
+export interface VideoConfigMixin {
+  getVideoConfig(): VideoConfiguration
+  updateVideoConfig(updates: Partial<VideoConfiguration>): void
+  setVideoResolution(width: number, height: number): void
+  setVideoFrameRate(frameRate: number): void
+  setVideoDevice(deviceId: string | null): void
+  toggleVideoEnabled(): boolean
+  resetVideoConfig(): void
+}
+
+export function WithVideoConfiguration<T extends Constructor<BaseConfigurationService>>(Base: T): T & Constructor<VideoConfigMixin> {
+  return class extends Base {
     protected getDefaultConfig() {
       return {
         ...super.getDefaultConfig(),
@@ -76,7 +86,7 @@ export function WithVideoConfiguration<T extends Constructor<BaseConfigurationSe
       this.config.video = this.deepClone(this.getDefaultConfig().video)
       this.emitChange('video', 'reset', oldConfig, this.config.video)
     }
-  }
+  } as any
 }
 
 export interface VideoEvents {

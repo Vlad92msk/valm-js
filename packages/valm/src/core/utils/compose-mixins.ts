@@ -7,6 +7,6 @@ type UnionToIntersection<U> = (U extends any ? (k: U) => void : never) extends (
 export function composeMixins<TBase extends Constructor, TMixins extends Array<Mixin<any, any>>>(
   Base: TBase,
   ...mixins: TMixins
-): Constructor<InstanceType<TBase> & UnionToIntersection<InstanceType<ReturnType<TMixins[number]>>>> {
+): TBase & Constructor<UnionToIntersection<InstanceType<ReturnType<TMixins[number]>>>> {
   return mixins.reduce((acc, mixin) => mixin(acc), Base) as any
 }

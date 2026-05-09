@@ -10,8 +10,17 @@ export const DEFAULT_TRANSCRIPTION_CONFIG: TranscriptionConfiguration = {
   saveTranscripts: false,
 }
 
-export function WithTranscriptionConfiguration<T extends Constructor<BaseConfigurationService>>(Base: T) {
-  return class TranscriptionConfigMixin extends Base {
+export interface TranscriptionConfigMixin {
+  getTranscriptionConfig(): TranscriptionConfiguration
+  updateTranscriptionConfig(updates: Partial<TranscriptionConfiguration>): void
+  setTranscriptionLanguage(language: string): void
+  toggleTranscriptionEnabled(): boolean
+  toggleAutoStart(): boolean
+  resetTranscriptionConfig(): void
+}
+
+export function WithTranscriptionConfiguration<T extends Constructor<BaseConfigurationService>>(Base: T): T & Constructor<TranscriptionConfigMixin> {
+  return class extends Base {
     protected getDefaultConfig() {
       return {
         ...super.getDefaultConfig(),
@@ -71,7 +80,7 @@ export function WithTranscriptionConfiguration<T extends Constructor<BaseConfigu
       this.config.transcription = this.deepClone(this.getDefaultConfig().transcription)
       this.emitChange('transcription', 'reset', oldConfig, this.config.transcription)
     }
-  }
+  } as any
 }
 
 export interface TranscriptionEvents {

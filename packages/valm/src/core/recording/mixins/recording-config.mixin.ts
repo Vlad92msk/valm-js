@@ -16,8 +16,20 @@ export const DEFAULT_RECORDING_CONFIG: RecordingConfiguration = {
   chunkInterval: 1000, // 1 секунда
 }
 
-export function WithRecordingConfiguration<T extends Constructor<BaseConfigurationService>>(Base: T) {
-  return class RecordingConfigMixin extends Base {
+export interface RecordingConfigMixin {
+  getRecordingConfig(): RecordingConfiguration
+  updateRecordingConfig(updates: Partial<RecordingConfiguration>): void
+  setRecordingFormat(format: 'webm' | 'mp4' | 'mkv'): void
+  setRecordingQuality(quality: 'low' | 'medium' | 'high' | 'custom'): void
+  setRecordingBitrates(videoBitsPerSecond: number, audioBitsPerSecond: number): void
+  setRecordingIncludes(options: { includeVideo?: boolean; includeAudio?: boolean; includeScreenShare?: boolean }): void
+  setRecordingLimits(maxDuration: number, maxFileSize: number): void
+  toggleRecordingEnabled(): boolean
+  resetRecordingConfig(): void
+}
+
+export function WithRecordingConfiguration<T extends Constructor<BaseConfigurationService>>(Base: T): T & Constructor<RecordingConfigMixin> {
+  return class extends Base {
     protected getDefaultConfig() {
       return {
         ...super.getDefaultConfig(),
@@ -145,7 +157,7 @@ export function WithRecordingConfiguration<T extends Constructor<BaseConfigurati
       this.config.recording = this.deepClone(this.getDefaultConfig().recording)
       this.emitChange('recording', 'reset', oldConfig, this.config.recording)
     }
-  }
+  } as any
 }
 
 export interface RecordingEvents {
