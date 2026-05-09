@@ -24,10 +24,7 @@ function createValm(): Valm {
   return new Valm().use(
     new EffectsPlugin({
       providers: {
-        segmentation: new SegmentationProvider({
-          ...mlProviderOptions,
-          config: { delegate: isMobile ? 'CPU' : 'GPU' },
-        }),
+        segmentation: new SegmentationProvider(mlProviderOptions),
         faceMesh: new FaceMeshProvider(mlProviderOptions),
       },
     }),
