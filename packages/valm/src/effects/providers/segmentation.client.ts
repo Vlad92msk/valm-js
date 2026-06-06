@@ -1,5 +1,6 @@
-import { FilesetResolver, ImageSegmenter } from '@mediapipe/tasks-vision'
+import type { ImageSegmenter } from '@mediapipe/tasks-vision'
 import { DeviceDetector } from '../../core'
+import { loadTasksVision } from './mediapipe-loader'
 
 export interface SegmentationConfig {
   // default: GPU на десктопе, CPU на мобильных
@@ -59,6 +60,8 @@ export class SegmentationService {
     const finalConfig = { ...defaultConfig, ...config }
 
     try {
+      const { FilesetResolver, ImageSegmenter } = await loadTasksVision()
+
       const visionPromise = FilesetResolver.forVisionTasks(finalConfig.wasmPath)
       const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('WASM load timeout')), 15000))
 

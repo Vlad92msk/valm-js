@@ -1,4 +1,5 @@
-import { FaceLandmarker, FilesetResolver } from '@mediapipe/tasks-vision'
+import type { FaceLandmarker } from '@mediapipe/tasks-vision'
+import { loadTasksVision } from './mediapipe-loader'
 
 // Для будущей коммуникации с воркером
 export enum WorkerMessageType {
@@ -64,6 +65,8 @@ export class FaceMeshClient {
     const finalConfig = { ...DEFAULT_CONFIG, ...config }
 
     try {
+      const { FaceLandmarker, FilesetResolver } = await loadTasksVision()
+
       const vision = await FilesetResolver.forVisionTasks(finalConfig.wasmPath)
 
       this.faceLandmarker = await FaceLandmarker.createFromOptions(vision, {
