@@ -67,7 +67,10 @@ export class RecordingService extends TypedEventEmitter<RecordingEventMap> {
       // Создаем комбинированный поток
       this.stream = await this.createRecordingStream(mergedOptions)
 
-      const mimeType = this.getBestMimeType(mergedOptions.format)
+      // Аудио-только запись (голосовое) нельзя писать в video/* контейнере с видеокодеком —
+      // MediaRecorder упадёт. Выбираем mime по реальному составу дорожек потока.
+      const hasVideo = this.stream.getVideoTracks().length > 0
+      const mimeType = this.getBestMimeType(mergedOptions.format, hasVideo)
 
       this.mediaRecorder = new MediaRecorder(this.stream, {
         mimeType,
@@ -167,13 +170,19 @@ export class RecordingService extends TypedEventEmitter<RecordingEventMap> {
     return combinedStream
   }
 
-  private getBestMimeType(preferredFormat?: string): string {
-    // Мапинг форматов на MIME types
-    const formatMap: Record<string, string[]> = {
+  private getBestMimeType(preferredFormat?: string, hasVideo: boolean = true): string {
+    // Мапинг форматов на MIME types — отдельно для видео и аудио-только записи.
+    const videoFormatMap: Record<string, string[]> = {
       webm: ['video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm'],
       mp4: ['video/mp4;codecs=h264,aac', 'video/mp4'],
       mkv: ['video/x-matroska;codecs=vp9,opus', 'video/x-matroska'],
     }
+    const audioFormatMap: Record<string, string[]> = {
+      webm: ['audio/webm;codecs=opus', 'audio/webm'],
+      mp4: ['audio/mp4;codecs=mp4a.40.2', 'audio/mp4', 'audio/aac'],
+      mkv: ['audio/webm;codecs=opus'],
+    }
+    const formatMap = hasVideo ? videoFormatMap : audioFormatMap
 
     // Если указан предпочтительный формат, сначала проверяем его
     if (preferredFormat && formatMap[preferredFormat]) {
@@ -185,8 +194,10 @@ export class RecordingService extends TypedEventEmitter<RecordingEventMap> {
       }
     }
 
-    // Fallback к общему списку приоритетов
-    const defaultFormats = ['video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm', 'video/mp4;codecs=h264,aac', 'video/mp4']
+    // Fallback к общему списку приоритетов (по составу дорожек)
+    const defaultFormats = hasVideo
+      ? ['video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm', 'video/mp4;codecs=h264,aac', 'video/mp4']
+      : ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4;codecs=mp4a.40.2', 'audio/mp4']
 
     return defaultFormats.find((format) => MediaRecorder.isTypeSupported(format)) || defaultFormats[0]
   }
