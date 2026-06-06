@@ -7,10 +7,7 @@ let modulePromise: Promise<TasksVisionModule> | null = null
 // пакет нужен только когда реально включают видео-эффекты.
 export function loadTasksVision(): Promise<TasksVisionModule> {
   if (!modulePromise) {
-    modulePromise = import(
-      /* webpackIgnore: true */ /* turbopackIgnore: true */
-      '@mediapipe/tasks-vision'
-    ).catch((error) => {
+    modulePromise = import('@mediapipe/tasks-vision').catch((error) => {
       modulePromise = null
       throw new Error(
         'Для видео-эффектов нужен пакет "@mediapipe/tasks-vision". Установите его: npm install @mediapipe/tasks-vision',

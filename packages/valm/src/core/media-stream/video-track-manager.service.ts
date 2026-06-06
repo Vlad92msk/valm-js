@@ -2,7 +2,7 @@ import { VideoConfiguration } from '../configuration/configuration.types'
 import { DeviceDetector } from '../utils'
 import { TypedEventEmitter } from '../utils'
 import { ConstraintsBuilderService } from './constraints-builder.service'
-import { IVideoProcessingPipeline } from '../../effects'
+import type { IVideoProcessingPipeline } from '../../effects'
 
 export enum VideoTrackEvents {
   TRACK_ADDED = 'trackAdded',

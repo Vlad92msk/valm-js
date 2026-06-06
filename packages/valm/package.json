@@ -1,6 +1,6 @@
 {
   "name": "valm-js",
-  "version": "0.1.12",
+  "version": "0.2.0",
   "description": "Browser media stream manager — camera, microphone, screen share, recording, transcription, and video effects",
   "keywords": [
     "media",
@@ -24,8 +24,12 @@
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
-      "import": "./dist/index.js",
-      "types": "./dist/index.d.ts"
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./effects": {
+      "types": "./dist/effects/index.d.ts",
+      "import": "./dist/effects.js"
     }
   },
   "files": ["dist", "!dist/**/*.map"],

@@ -7,15 +7,22 @@ export default defineConfig({
   ],
   build: {
     lib: {
-      entry: 'src/index.ts',
+      entry: {
+        index: 'src/index.ts',
+        effects: 'src/effects/index.ts',
+      },
       formats: ['es'],
-      fileName: 'index',
     },
     rollupOptions: {
       external: [
         'eventemitter3',
         '@mediapipe/tasks-vision',
       ],
+      output: {
+        // Стабильные имена точек входа: dist/index.js, dist/effects.js
+        entryFileNames: '[name].js',
+        chunkFileNames: 'chunks/[name]-[hash].js',
+      },
     },
     target: 'ES2022',
     sourcemap: true,

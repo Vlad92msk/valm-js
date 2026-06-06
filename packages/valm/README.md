@@ -164,7 +164,8 @@ transcription.onTranscript(({ text, isFinal }) => {
 Video effects require the `EffectsPlugin` and the `@mediapipe/tasks-vision` peer dependency.
 
 ```typescript
-import { Valm, EffectsPlugin } from 'valm-js'
+import { Valm } from 'valm-js'
+import { EffectsPlugin } from 'valm-js/effects'
 
 const media = new Valm({ video: { enabled: true } })
 media.use(new EffectsPlugin())
@@ -197,7 +198,7 @@ effects.onStateChange((state) => {
 Implement `IVideoEffect` (or extend `BaseEffect`) and add it to the pipeline:
 
 ```typescript
-import { BaseEffect, EffectType, EffectFeature, FrameContext } from 'valm-js'
+import { BaseEffect, EffectType, EffectFeature, FrameContext } from 'valm-js/effects'
 
 class SepiaEffect extends BaseEffect<{ intensity: number }> {
   readonly name = 'sepia'

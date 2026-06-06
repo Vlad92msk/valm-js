@@ -7,7 +7,8 @@
 ## Доступ
 
 ```typescript
-import { Valm, EffectsPlugin } from 'valm-js'
+import { Valm } from 'valm-js'
+import { EffectsPlugin } from 'valm-js/effects'
 
 const media = new Valm(config)
 
@@ -262,7 +263,7 @@ unsub() // отписка
 ### События (TypedEventEmitter)
 
 ```typescript
-import { EffectsEvents } from 'valm-js'
+import { EffectsEvents } from 'valm-js/effects'
 
 effects.on(EffectsEvents.STATE_CHANGED, (state: EffectsState) => { ... })
 effects.on(EffectsEvents.EFFECT_ENABLED, ({ effect }: { effect: string }) => {

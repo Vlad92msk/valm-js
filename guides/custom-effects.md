@@ -54,7 +54,7 @@ enum EffectFeature {
 Базовый класс с управлением параметрами и жизненным циклом:
 
 ```typescript
-import { BaseEffect, EffectType, EffectFeature, FrameContext } from 'valm-js'
+import { BaseEffect, EffectType, EffectFeature, FrameContext } from 'valm-js/effects'
 
 class MyEffect extends BaseEffect<MyParams> {
   readonly name = 'my-effect'           // уникальный идентификатор
@@ -270,7 +270,7 @@ media.effectsController.removeEffect('sepia')
 MediaPipe ImageSegmenter — сегментация человека от фона. Используется встроенным `EffectsPlugin` при наличии эффектов с `EffectFeature.SEGMENTATION`.
 
 ```typescript
-import { SegmentationProvider } from 'valm-js'
+import { SegmentationProvider } from 'valm-js/effects'
 
 const provider = new SegmentationProvider({
   config: {
@@ -294,7 +294,7 @@ media.use(new EffectsPlugin({
 MediaPipe FaceLandmarker — 478 точек лица. Используется при наличии эффектов с `EffectFeature.FACE_MESH`.
 
 ```typescript
-import { FaceMeshProvider } from 'valm-js'
+import { FaceMeshProvider } from 'valm-js/effects'
 
 const provider = new FaceMeshProvider({
   config: {
@@ -317,7 +317,7 @@ media.use(new EffectsPlugin({
 Реализуйте `IMLProvider` напрямую или унаследуйтесь от `BaseMLProvider` — он добавляет throttling, caching и anti-parallel защиту (повторный вызов `detect()` пока выполняется предыдущий — вернёт тот же промис).
 
 ```typescript
-import { BaseMLProvider } from 'valm-js'
+import { BaseMLProvider } from 'valm-js/effects'
 
 interface MyMLConfig {
   modelPath: string

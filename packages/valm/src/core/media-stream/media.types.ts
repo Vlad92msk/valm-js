@@ -1,7 +1,7 @@
 import { ValmConfiguration } from '../configuration/configuration.types'
 import { ScreenShareState } from '../screen-share/screen-share.types'
 import { TranscriptionState } from '../transcription/transcription.types'
-import { EffectsState } from '../../effects'
+import type { EffectsState } from '../../effects'
 import { DevicesState } from './device.types'
 
 export interface CameraState {

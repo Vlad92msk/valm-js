@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { Link } from 'react-router-dom'
-import { Valm, EffectsPlugin, SegmentationProvider, FaceMeshProvider, DeviceDetector } from 'valm-js'
+import { Valm, DeviceDetector } from 'valm-js'
+import { EffectsPlugin, SegmentationProvider, FaceMeshProvider } from 'valm-js/effects'
 
 import { Tabs } from './elements/Tabs'
 import DevicesTab from './elements/DevicesTab'
