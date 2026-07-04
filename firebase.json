@@ -4,6 +4,9 @@
     "public": "packages/homepage/dist",
     "cleanUrls": true,
     "trailingSlash": false,
+    "predeploy": [
+      "yarn --cwd \"$PROJECT_DIR/packages/homepage\" build"
+    ],
     "ignore": [
       "firebase.json",
       "**/.*",
