@@ -1,6 +1,7 @@
 import { useState, type MouseEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
+import { Head } from 'vite-react-ssg'
 import {
   MonitorUp,
   Sparkles,
@@ -92,6 +93,11 @@ const HomePage = () => {
 
   return (
     <div className={cn()}>
+      <Head>
+        <title>valm — all your media work in one API</title>
+        <link rel="canonical" href="https://valm-js.web.app/" />
+      </Head>
+
       {/* ── Hero ───────────────────────────────────────────── */}
       <header className={cn('hero')}>
         <div className={cn('heroInner')}>

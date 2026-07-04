@@ -4,6 +4,8 @@
 //                          заголовок, краткое описание, ссылки на страницы docs.
 //   public/llms-full.txt — вся англоязычная документация одним файлом, чтобы
 //                          модель могла проглотить её целиком без обхода сайта.
+//   public/llms/<slug>.md — каждый раздел отдельным markdown-файлом (≤~20 KB):
+//                          страховка от обреза llms-full.txt фетчерами (~128 KB).
 //   public/sitemap.xml    — карта сайта для поисковых краулеров.
 //
 // Единственный источник правды по составу и порядку — src/config/docsNav.ts
@@ -22,6 +24,7 @@ const GUIDES_DIR = path.join(REPO_ROOT, 'guides', 'en')
 const README = path.join(REPO_ROOT, 'packages', 'valm', 'README.md')
 const NAV_FILE = path.join(HOMEPAGE_ROOT, 'src', 'config', 'docsNav.ts')
 const OUT_DIR = path.join(HOMEPAGE_ROOT, 'public')
+const LLMS_DIR = path.join(OUT_DIR, 'llms')
 
 const SITE = 'https://valm-js.web.app'
 const NPM = 'https://www.npmjs.com/package/valm-js'
@@ -194,12 +197,14 @@ function build() {
 
     writeIndex(entries)
     writeFull(entries)
+    writePerDoc(entries)
     writeSitemap(entries)
 
     console.log(`\n✅ Сгенерировано ${entries.length} записей`)
     for (const f of ['llms.txt', 'llms-full.txt', 'sitemap.xml']) {
         console.log(`   📄 public/${f}`)
     }
+    console.log(`   📁 public/llms/*.md (${entries.length})`)
 }
 
 /** Компактный индекс llms.txt. */
@@ -214,6 +219,7 @@ function writeIndex(entries) {
     lines.push(`- npm: ${NPM}`)
     lines.push(`- GitHub: ${GITHUB}`)
     lines.push(`- Full documentation as one file: ${SITE}/llms-full.txt`)
+    lines.push(`- Per-page raw markdown: ${SITE}/llms/<slug>.md (same content, no HTML)`)
     lines.push('')
 
     // Группируем в порядке появления групп.
@@ -275,6 +281,25 @@ function writeFull(entries) {
     }
 
     fs.writeFileSync(path.join(OUT_DIR, 'llms-full.txt'), parts.join('\n').trimEnd() + '\n')
+}
+
+/**
+ * Раскладывает каждый раздел отдельным markdown-файлом в public/llms/<slug>.md.
+ * Зачем: llms-full.txt большой, и web_fetch многих агентов режет его по ~128 KB;
+ * маленькие per-doc файлы этот обрез обходят. Канонический человекочитаемый URL
+ * остаётся /docs/<slug> (пререндеренный HTML) — сюда ведут ссылки llms.txt;
+ * raw .md — вторичная чистая копия без HTML-обвязки.
+ */
+function writePerDoc(entries) {
+    fs.rmSync(LLMS_DIR, { recursive: true, force: true })
+    fs.mkdirSync(LLMS_DIR, { recursive: true })
+    for (const e of entries) {
+        const header = `<!-- source: guides/en/${e.slug}.md · canonical: ${SITE}/docs/${e.slug} -->\n\n`
+        fs.writeFileSync(
+            path.join(LLMS_DIR, `${e.slug}.md`),
+            header + absolutizeLinks(e.body).trim() + '\n',
+        )
+    }
 }
 
 /** Карта сайта sitemap.xml. */

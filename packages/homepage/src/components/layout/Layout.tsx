@@ -1,20 +1,26 @@
-import type { ReactNode } from 'react'
+import { useEffect } from 'react'
+import { Outlet } from 'react-router-dom'
 
 import styles from './Layout.module.scss'
 import { makeCn } from '../../utils/makeCn'
 import Header from '../header/Header'
+import { applyStoredLocale } from '../../i18n'
 
 const cn = makeCn('Layout', styles)
 
-interface LayoutProps {
-  children: ReactNode
-}
+const Layout = () => {
+  // После гидрации (сервер и первый клиентский рендер — на PRERENDER_LOCALE)
+  // применяем реальный язык пользователя из localStorage / DEFAULT_LOCALE.
+  useEffect(() => {
+    applyStoredLocale()
+  }, [])
 
-const Layout = ({ children }: LayoutProps) => {
   return (
     <div className={cn()}>
       <Header />
-      <main className={cn('content')}>{children}</main>
+      <main className={cn('content')}>
+        <Outlet />
+      </main>
     </div>
   )
 }

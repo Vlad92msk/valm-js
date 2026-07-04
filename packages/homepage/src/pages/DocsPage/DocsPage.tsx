@@ -1,14 +1,17 @@
 import { useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
+import { Head } from 'vite-react-ssg'
 
 import styles from './DocsPage.module.scss'
 import { makeCn } from '../../utils/makeCn'
 import Sidebar from '../../components/sidebar/Sidebar'
 import MarkdownRenderer from '../../components/markdown-renderer/MarkdownRenderer'
-import { getGroupKey } from '../../config/docsNav'
+import { getGroupKey, getDocTitle } from '../../config/docsNav'
 
 const cn = makeCn('DocsPage', styles)
+
+const SITE = 'https://valm-js.web.app'
 
 const ArrowLeftIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={cn('footerIcon')} aria-hidden="true">
@@ -30,12 +33,20 @@ const DocsPage = () => {
   const handleOpenSidebar = () => setIsSidebarOpen(true)
   const handleCloseSidebar = () => setIsSidebarOpen(false)
 
-  // Терпим хвостовой `.md` в URL (напр. /docs/events.md) — резолвим как /docs/events.
-  const slug = rawSlug?.replace(/\.md$/i, '')
-  const groupKey = slug ? getGroupKey(slug) : null
+  // `/docs` без раздела → дефолтный getting-started (пререндерится с контентом
+  // и полным сайдбаром). Терпим хвостовой `.md` (напр. /docs/events.md).
+  const slug = (rawSlug ?? 'getting-started').replace(/\.md$/i, '')
+  const groupKey = getGroupKey(slug)
 
   return (
     <div className={cn()}>
+      {/* Per-page title + canonical (иначе один общий на все разделы). Canonical
+          на /docs указывает на /docs/getting-started, чтобы не плодить дубли. */}
+      <Head>
+        <title>{`${getDocTitle(slug)} · valm`}</title>
+        <link rel="canonical" href={`${SITE}/docs/${slug}`} />
+      </Head>
+
       <Sidebar isOpen={isSidebarOpen} onClose={handleCloseSidebar} />
 
       <main className={cn('main')}>

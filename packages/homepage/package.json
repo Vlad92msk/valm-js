@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "yarn docs:llms && vite",
-    "build": "yarn docs:llms && vite build",
+    "build": "yarn docs:llms && vite-react-ssg build && node scripts/check-prerender.mjs",
     "docs:llms": "node scripts/generate-llms.mjs",
     "og": "node scripts/build-og.mjs",
     "typecheck": "tsc --noEmit"
@@ -34,6 +34,7 @@
     "@vitejs/plugin-react": "^4.0.0",
     "sass": "^1.98.0",
     "typescript": "^5.5.3",
-    "vite": "^5.0.0"
+    "vite": "^5.0.0",
+    "vite-react-ssg": "0.9.0"
   }
 }

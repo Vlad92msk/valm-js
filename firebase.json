@@ -2,10 +2,20 @@
   "hosting": {
     "site": "valm-js",
     "public": "packages/homepage/dist",
+    "cleanUrls": true,
+    "trailingSlash": false,
     "ignore": [
       "firebase.json",
       "**/.*",
       "**/node_modules/**"
+    ],
+    "headers": [
+      {
+        "source": "/llms/**",
+        "headers": [
+          { "key": "Content-Type", "value": "text/plain; charset=utf-8" }
+        ]
+      }
     ],
     "rewrites": [
       {

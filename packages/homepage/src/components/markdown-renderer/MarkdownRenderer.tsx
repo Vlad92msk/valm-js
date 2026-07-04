@@ -1,4 +1,4 @@
-import { useState, useEffect, isValidElement, type ReactNode } from 'react'
+import { useState, useEffect, isValidElement, useMemo, type ReactNode } from 'react'
 import ReactMarkdown from 'react-markdown'
 import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
@@ -33,19 +33,22 @@ const DocLink = ({ href, children }: { href?: string; children?: ReactNode }) =>
   return <Link to={to}>{children}</Link>
 }
 
-// Гайды разложены по языковым папкам (guides/ru, guides/en). Грузим все,
-// а нужный выбираем по активной локали (с откатом на дефолтную).
+// Гайды разложены по языковым папкам (guides/ru, guides/en). Грузим все тела
+// СИНХРОННО на этапе сборки (eager) — тогда контент доступен прямо во время
+// рендера, и SSG-пререндер зашивает его в статический HTML (без «Loading…»).
 const guideModules = import.meta.glob<string>('@guides/*/*.md', {
   query: '?raw',
   import: 'default',
+  eager: true,
 })
 
 const DEFAULT_DOC_LANG = 'ru'
 
-// Ключ модуля для конкретного языка и slug, либо undefined.
-const findGuideKey = (lang: string, slug: string): string | undefined => {
+// Тело гайда для конкретного языка и slug (по суффиксу пути), либо undefined.
+const findGuide = (lang: string, slug: string): string | undefined => {
   const suffix = `/${lang}/${normalizeSlug(slug)}.md`
-  return Object.keys(guideModules).find((k) => k.endsWith(suffix))
+  const key = Object.keys(guideModules).find((k) => k.endsWith(suffix))
+  return key ? guideModules[key] : undefined
 }
 
 interface CodeFrameProps {
@@ -152,32 +155,16 @@ interface MarkdownRendererProps {
 const MarkdownRenderer = ({ slug }: MarkdownRendererProps) => {
   const { t, i18n } = useTranslation()
   const lang = i18n.language
-  const [content, setContent] = useState<string | null>(null)
-  const [notFound, setNotFound] = useState(false)
 
-  useEffect(() => {
-    // Сначала документ на активном языке, иначе — на дефолтном (перевода может ещё не быть).
-    const key = findGuideKey(lang, slug) ?? findGuideKey(DEFAULT_DOC_LANG, slug)
+  // Контент выбирается синхронно из eager-глоба: сначала на активном языке,
+  // иначе — на дефолтном (перевода может ещё не быть). Никаких async/loading —
+  // текст присутствует уже в первом рендере, поэтому попадает в пререндер.
+  const content = useMemo(
+    () => findGuide(lang, slug) ?? findGuide(DEFAULT_DOC_LANG, slug) ?? null,
+    [slug, lang],
+  )
 
-    if (!key) {
-      setNotFound(true)
-      setContent(null)
-      return
-    }
-
-    setContent(null)
-    setNotFound(false)
-    let cancelled = false
-    guideModules[key]().then(text => {
-      if (!cancelled) setContent(text)
-    })
-    return () => {
-      cancelled = true
-    }
-  }, [slug, lang])
-
-  if (notFound) return <p className={cn('message')}>{t('docs.notFound')}</p>
-  if (content === null) return <p className={cn('message')}>{t('docs.loading')}</p>
+  if (content === null) return <p className={cn('message')}>{t('docs.notFound')}</p>
 
   return (
     <div className="markdown">
