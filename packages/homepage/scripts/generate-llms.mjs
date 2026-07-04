@@ -29,6 +29,12 @@ const LLMS_DIR = path.join(OUT_DIR, 'llms')
 const SITE = 'https://valm-js.web.app'
 const NPM = 'https://www.npmjs.com/package/valm-js'
 const GITHUB = 'https://github.com/Vlad92msk/valm-js'
+// Машиночитаемые эндпоинты для «копнуть глубже», когда доки не покрывают вопрос:
+// registry отдаёт чистый JSON (версия/зависимости), raw-README — сырой markdown
+// (веб-морды npmjs.com/github.com — JS-тяжёлые, агент через web_fetch видит мало).
+const NPM_REGISTRY = 'https://registry.npmjs.org/valm-js'
+const RAW_README =
+    'https://raw.githubusercontent.com/Vlad92msk/valm-js/master/packages/valm/README.md'
 
 // Английские ярлыки групп — зеркало sidebar.groups из src/i18n/locales/en.ts.
 // `more` — служебная группа для гайдов, которых ещё нет в docsNav.ts.
@@ -220,6 +226,11 @@ function writeIndex(entries) {
     lines.push(`- GitHub: ${GITHUB}`)
     lines.push(`- Full documentation as one file: ${SITE}/llms-full.txt`)
     lines.push(`- Per-page raw markdown: ${SITE}/llms/<slug>.md (same content, no HTML)`)
+    lines.push('')
+    lines.push('Dig deeper (machine-readable, no JS):')
+    lines.push(`- Latest version & package metadata (JSON): ${NPM_REGISTRY}`)
+    lines.push(`- Source README (raw markdown): ${RAW_README}`)
+    lines.push(`- Full source code: ${GITHUB} (browse raw files via raw.githubusercontent.com)`)
     lines.push('')
 
     // Группируем в порядке появления групп.
