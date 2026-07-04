@@ -1,6 +1,15 @@
 import { ConfigurationChangeEvent, ValmConfiguration, RecordingConfiguration } from '../../types'
 import { BaseConfigurationService, Constructor } from '../../configuration/mixins/base.mixin'
 
+// Пресеты битрейта по уровню качества. Единый источник правды:
+// используется и здесь (setRecordingQuality), и в RecordingService при
+// передаче quality напрямую в startRecording().
+export const QUALITY_BITRATE_PRESETS: Record<'low' | 'medium' | 'high', { video: number; audio: number }> = {
+  low: { video: 1000000, audio: 64000 },
+  medium: { video: 2500000, audio: 128000 },
+  high: { video: 5000000, audio: 256000 },
+}
+
 export const DEFAULT_RECORDING_CONFIG: RecordingConfiguration = {
   enabled: false,
   format: 'webm',
@@ -69,12 +78,7 @@ export function WithRecordingConfiguration<T extends Constructor<BaseConfigurati
       this.config.recording.quality = quality
 
       if (quality !== 'custom') {
-        const qualityPresets = {
-          low: { video: 1000000, audio: 64000 },
-          medium: { video: 2500000, audio: 128000 },
-          high: { video: 5000000, audio: 256000 },
-        }
-        const preset = qualityPresets[quality]
+        const preset = QUALITY_BITRATE_PRESETS[quality]
         this.config.recording.videoBitsPerSecond = preset.video
         this.config.recording.audioBitsPerSecond = preset.audio
       }

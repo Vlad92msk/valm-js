@@ -1,0 +1,61 @@
+# https://www.robotstxt.org/robotstxt.html
+
+User-agent: *
+Allow: /
+Crawl-delay: 1
+
+# Priority pages for indexing
+Allow: /docs
+Allow: /docs/
+
+# LLM-friendly documentation (https://llmstxt.org)
+Allow: /llms.txt
+Allow: /llms-full.txt
+
+# Sitemap location
+Sitemap: https://valm-js.web.app/sitemap.xml
+
+# AI / LLM crawlers — explicitly welcome (docs are meant to be read and cited)
+User-agent: GPTBot
+Allow: /
+
+User-agent: OAI-SearchBot
+Allow: /
+
+User-agent: ChatGPT-User
+Allow: /
+
+User-agent: ClaudeBot
+Allow: /
+
+User-agent: Claude-Web
+Allow: /
+
+User-agent: anthropic-ai
+Allow: /
+
+User-agent: PerplexityBot
+Allow: /
+
+User-agent: Google-Extended
+Allow: /
+
+User-agent: Applebot-Extended
+Allow: /
+
+User-agent: cohere-ai
+Allow: /
+
+# GitHub / social preview bots
+User-agent: GitHubBot
+Allow: /
+
+User-agent: facebookexternalhit
+Allow: /
+
+# Resource-heavy crawlers
+User-agent: MJ12bot
+Disallow: /
+
+User-agent: AhrefsBot
+Crawl-delay: 10

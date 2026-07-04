@@ -10,7 +10,7 @@ export function loadTasksVision(): Promise<TasksVisionModule> {
     modulePromise = import('@mediapipe/tasks-vision').catch((error) => {
       modulePromise = null
       throw new Error(
-        'Для видео-эффектов нужен пакет "@mediapipe/tasks-vision". Установите его: npm install @mediapipe/tasks-vision',
+        'Для видео-эффектов нужен пакет "@mediapipe/tasks-vision". Установите его: yarn add @mediapipe/tasks-vision',
         { cause: error },
       )
     })

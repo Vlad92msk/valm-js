@@ -1,0 +1,25 @@
+<svg width="1200" height="630" viewBox="0 0 1200 630" xmlns="http://www.w3.org/2000/svg">
+  <!-- Social preview (Open Graph / Twitter). Rasterized to public/og.png by build-og.mjs. -->
+  <rect width="1200" height="630" fill="#1C1C1B"/>
+
+  <!-- VALM monogram card (same palette as favicon.svg) -->
+  <g transform="translate(130,165)">
+    <rect width="300" height="300" rx="66" fill="#141413"/>
+    <g font-family="Menlo, ui-monospace, monospace" font-size="120" font-weight="700"
+       text-anchor="middle" dominant-baseline="central">
+      <text x="80" y="82"  fill="#3B82F6">V</text>
+      <text x="220" y="82"  fill="#8B5CF6">A</text>
+      <text x="80" y="218" fill="#14B8A6">L</text>
+      <text x="220" y="218" fill="#7C3AED">M</text>
+    </g>
+  </g>
+
+  <!-- Wordmark + tagline -->
+  <g font-family="Menlo, ui-monospace, monospace">
+    <text x="500" y="290" font-size="128" font-weight="700" fill="#C4BFB2">valm</text>
+    <rect x="504" y="330" width="150" height="6" rx="3" fill="#00CCFF"/>
+    <text x="504" y="390" font-size="34" fill="#9E998B">all your media work in one API</text>
+    <text x="504" y="448" font-size="26" fill="#6E6A5F">camera · microphone · screen-share</text>
+    <text x="504" y="486" font-size="26" fill="#6E6A5F">recording · effects · transcription</text>
+  </g>
+</svg>

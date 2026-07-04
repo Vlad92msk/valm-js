@@ -5,15 +5,13 @@ TypeScript library for managing media streams in the browser. Camera, microphone
 ## Install
 
 ```bash
-npm install valm-js
-# or
 yarn add valm-js
 ```
 
 For video effects (blur, virtual background), `@mediapipe/tasks-vision` is a peer dependency:
 
 ```bash
-npm install @mediapipe/tasks-vision
+yarn add @mediapipe/tasks-vision
 ```
 
 ## Quick start
@@ -91,7 +89,7 @@ await mic.switchDevice(deviceId)
 mic.onStateChange((state) => {
   // state.isEnabled, state.isMuted, state.isSpeaking, state.volume
 })
-mic.onVolumeChange((volume) => { /* 0–1 */ })
+mic.onVolumeChange(({ volume, isSpeaking }) => { /* volume: 0–100 */ })
 ```
 
 ## Screen share
@@ -186,7 +184,7 @@ effects.setVirtualBackgroundFitMode(BackgroundFitMode.COVER)
 effects.removeVirtualBackground()
 
 // Quality presets
-effects.setQualityPreset('high')  // 'low' | 'medium' | 'high' | 'ultra' | 'custom'
+effects.setQualityPreset('high')  // 'mobile' | 'low' | 'medium' | 'high' | 'ultra' | 'custom'
 
 effects.onStateChange((state) => {
   // state.blur.isEnabled, state.currentFps, state.activeEffects
@@ -298,14 +296,14 @@ const media = new Valm({
     enabled: true,
     echoCancellation: true,
     noiseSuppression: true,
-    enableSpeakingDetection: false,
+    enableSpeakingDetection: true,
   },
   recording: {
     format: 'webm',
     quality: 'medium',
   },
   transcription: {
-    language: 'en-US',
+    language: 'ru-RU',
     interimResults: true,
   },
   autoInitialize: false,
@@ -331,7 +329,7 @@ const state = await media.permissions.checkPermission('camera')
 // 'granted' | 'denied' | 'prompt' | 'unknown'
 
 const { camera, microphone } = await media.permissions.checkAll()
-await media.permissions.request('camera')
+await media.permissions.requestPermission('camera')
 ```
 
 ## License

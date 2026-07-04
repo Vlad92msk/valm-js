@@ -54,6 +54,10 @@ export interface TrackEvent {
   track: MediaStreamTrack
   oldTrack?: MediaStreamTrack
   stream?: MediaStream
+  // Причина замены трека (только для TRACK_REPLACED, видео):
+  //  'device'     — сменилось физическое устройство
+  //  'background' — трек подменил пайплайн эффектов (suspend/resume)
+  source?: 'device' | 'background'
 }
 
 export interface ConfigurationChangeEvent<T = any> {

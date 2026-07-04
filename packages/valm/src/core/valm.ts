@@ -1,5 +1,6 @@
 import { ConfigurationService } from './configuration'
 import { ConfigurationController } from './configuration'
+import { DiagnosticsService } from './diagnostics'
 import { AudioOutputController, CameraController, DevicesController, MicrophoneController } from './media-stream'
 import { ValmEvents } from './media-stream/manager-events.types'
 import { MediaStreamService } from './media-stream'
@@ -45,6 +46,9 @@ export class Valm extends TypedEventEmitter<ValmEvents> {
   public readonly recordingController: RecordingController
   public readonly transcriptionController: TranscriptionController
 
+  // Сервисы-обёртки
+  public readonly diagnostics: DiagnosticsService
+
   // Состояние инициализации (для subscribe/getSnapshot)
   private initializationState: ValmSnapshot['initializationState'] = 'idle'
   private error: any = null
@@ -81,6 +85,8 @@ export class Valm extends TypedEventEmitter<ValmEvents> {
 
     this.recordingController = new RecordingController(this.configurationService, this.recordingService)
     this.transcriptionController = new TranscriptionController(this.configurationService, this.transcriptionService, this.mediaStreamService)
+
+    this.diagnostics = new DiagnosticsService(this.permissionsService, this.cameraController, this.microphoneController, this.audioOutputController)
 
     this.snapshot = this.buildSnapshot()
     this.setupEventListeners()
@@ -238,6 +244,7 @@ export class Valm extends TypedEventEmitter<ValmEvents> {
     this.recordingController.destroy()
     this.recordingService.destroy()
     this.transcriptionController.destroy()
+    this.diagnostics.destroy()
 
     try {
       await this.mediaStreamService.destroy()

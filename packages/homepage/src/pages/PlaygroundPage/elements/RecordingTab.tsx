@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback } from 'react'
+import { useTranslation } from 'react-i18next'
+import { Circle, Square, Play, Pause } from 'lucide-react'
 import type { Valm } from 'valm-js'
 
 import styles from '../PlaygroundPage.module.scss'
 import { makeCn } from '../../../utils/makeCn'
-import HintRow from './Hint'
 
 const cn = makeCn('PlaygroundPage', styles)
 
@@ -35,6 +36,7 @@ interface RecordingTabProps {
 }
 
 const RecordingTab = ({ media, onError }: RecordingTabProps) => {
+  const { t } = useTranslation()
   const [isRecording, setIsRecording] = useState(false)
   const [isPaused, setIsPaused] = useState(false)
   const [recordingDuration, setRecordingDuration] = useState(0)
@@ -134,72 +136,85 @@ const RecordingTab = ({ media, onError }: RecordingTabProps) => {
     }
   }, [media, isPaused])
 
+  const noSource = !isRecording && !cameraEnabled && !micEnabled
+  const timerState = isRecording ? (isPaused ? 'paused' : 'active') : 'idle'
+  const statusText = isRecording
+    ? (isPaused ? t('playground.recording.paused') : t('playground.recording.active'))
+    : t('playground.recording.ready')
+
   return (
     <div className={cn('controls')}>
       <div className={cn('controlGroup')}>
         <h3 className={cn('controlGroupTitle')}>Recording</h3>
-        {!isRecording ? (
-          <>
-            <HintRow label="Format" hint="Формат файла записи. WebM — кодек VP9/VP8 (лучшая поддержка в браузерах). MP4 — кодек H.264 (универсальная совместимость)">
-              <select
-                className={cn('deviceSelect', { compact: true })}
-                value={recordingFormat}
-                onChange={(e) => setRecordingFormat(e.target.value)}
-              >
-                {RECORDING_FORMATS.map((f) => (
-                  <option key={f.value} value={f.value}>{f.label}</option>
-                ))}
-              </select>
-            </HintRow>
-            <HintRow label="Quality" hint="Качество записи. Low — 1 Мбит/с видео + 64 кбит/с аудио. Medium — 2.5 Мбит/с + 128 кбит/с. High — 5 Мбит/с + 256 кбит/с">
-              <select
-                className={cn('deviceSelect', { compact: true })}
-                value={recordingQuality}
-                onChange={(e) => setRecordingQuality(e.target.value)}
-              >
-                {QUALITY_PRESETS.map((p) => (
-                  <option key={p.value} value={p.value}>{p.label}</option>
-                ))}
-              </select>
-            </HintRow>
-            <div className={cn('controlRow')}>
-              <button
-                type="button"
-                className={cn('actionBtn', { variant: 'primary' })}
-                onClick={handleStartRecording}
-                disabled={!cameraEnabled && !micEnabled}
-              >
-                Start recording
-              </button>
-            </div>
-          </>
-        ) : (
-          <>
-            <div className={cn('controlRow')}>
-              <span className={cn('controlLabel')}>Duration</span>
-              <span className={cn('controlValue')}>{formatDuration(recordingDuration)}</span>
-            </div>
-            <div className={cn('controlRow')}>
-              <span className={cn('controlLabel')}>Size</span>
-              <span className={cn('controlValue')}>{formatSize(recordingSize)}</span>
-            </div>
-            <div className={cn('controlRowActions')}>
-              <button type="button" className={cn('actionBtn')} onClick={handlePauseRecording}>
-                {isPaused ? 'Resume' : 'Pause'}
-              </button>
-              <button type="button" className={cn('actionBtn', { variant: 'danger' })} onClick={handleStopRecording}>
-                Stop
-              </button>
-            </div>
-          </>
+
+        {/* Big timer */}
+        <div className={cn('recTimerBox')}>
+          <div className={cn('recTime', { state: timerState })}>{formatDuration(recordingDuration)}</div>
+          <div className={cn('recStatus')}>
+            {statusText}
+            {isRecording && ` · ${formatSize(recordingSize)}`}
+          </div>
+        </div>
+
+        {/* Settings — locked while recording */}
+        <div className={cn('field')}>
+          <label className={cn('fieldLabel')}>Format</label>
+          <select
+            className={cn('deviceSelect')}
+            value={recordingFormat}
+            onChange={(e) => setRecordingFormat(e.target.value)}
+            disabled={isRecording}
+          >
+            {RECORDING_FORMATS.map((f) => (
+              <option key={f.value} value={f.value}>{f.label}</option>
+            ))}
+          </select>
+        </div>
+        <div className={cn('field')}>
+          <label className={cn('fieldLabel')}>Quality</label>
+          <select
+            className={cn('deviceSelect')}
+            value={recordingQuality}
+            onChange={(e) => setRecordingQuality(e.target.value)}
+            disabled={isRecording}
+          >
+            {QUALITY_PRESETS.map((p) => (
+              <option key={p.value} value={p.value}>{p.label}</option>
+            ))}
+          </select>
+        </div>
+
+        {/* Record / Stop + Pause */}
+        <div className={cn('recActions')}>
+          <button
+            type="button"
+            className={cn('actionBtn', isRecording ? { full: true } : { variant: 'danger', full: true })}
+            onClick={isRecording ? handleStopRecording : handleStartRecording}
+            disabled={noSource}
+          >
+            {isRecording ? <Square size={18} /> : <Circle size={18} />}
+            {isRecording ? t('playground.recording.stop') : t('playground.recording.record')}
+          </button>
+          <button
+            type="button"
+            className={cn('recPauseBtn')}
+            onClick={handlePauseRecording}
+            disabled={!isRecording}
+            aria-label={isPaused ? 'Resume' : 'Pause'}
+          >
+            {isPaused ? <Play size={18} /> : <Pause size={18} />}
+          </button>
+        </div>
+
+        {noSource && (
+          <p className={cn('recNote')}>{t('playground.recording.needSource')}</p>
         )}
+
         {lastRecordingUrl && (
           <>
-            <div className={cn('controlRow')}>
-              <a href={lastRecordingUrl} download={`recording.${recordingFormat}`} className={cn('actionBtn')}>
-                Download
-              </a>
-            </div>
+            <a href={lastRecordingUrl} download={`recording.${recordingFormat}`} className={cn('actionBtn', { full: true })}>
+              Download
+            </a>
             <video src={lastRecordingUrl} className={cn('recordingPlayback')} controls />
           </>
         )}

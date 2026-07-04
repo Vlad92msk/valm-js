@@ -1,0 +1,5 @@
+# Playwright e2e артефакты
+test-results/
+playwright-report/
+playwright/.cache/
+.last-run.json

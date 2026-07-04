@@ -1,0 +1,97 @@
+// Эмиссия CSS-переменных из токен-карт (типографика, отступы, радиусы, брейкпоинты).
+// Только CSS-вывод → подключается один раз через index.scss.
+@use 'sass:map';
+@use 'sass:list';
+@use 'sass:meta';
+@use 'tokens' as t;
+
+:root {
+  /* ─────────────────────────────────────────────────────────────────────────
+   Шкала z-index дизайн-системы (не зависит от темы → в :root).
+   ЕДИНЫЙ источник правды для наложения слоёв. Прикладной код НЕ должен
+   хардкодить большие z-index — только эти токены, иначе наложение снова
+   станет непредсказуемым и что-то «просветит» сквозь модалку.
+   Порядок снизу вверх; плавающие слои (popover/tooltip) специально ВЫШЕ
+   модалки, чтобы меню/дропдауны внутри модалки были видны.
+   ───────────────────────────────────────────────────────────────────────── */
+  --z-base: 0;
+  --z-dropdown: 700;
+  --z-sticky: 800;
+  --z-modal: 900;     /* оверлей + контент модалки */
+  --z-popover: 1000;  /* совпадает с дефолтом Popover */
+  --z-toast: 1100;
+  --z-tooltip: 1200;
+
+  // — Шрифты —
+  // meta.inspect сохраняет кавычки у названий с пробелами/цифрами
+  // ('Source Sans 3' без кавычек — невалидный font-family и роняет всю декларацию).
+  --font-sans: #{meta.inspect(t.$font-sans)};
+  --font-mono: #{meta.inspect(t.$font-mono)};
+  --base-font-size: 16px;
+  --letter-spacing-base: -0.005em;
+  --letter-spacing-heading: -0.012em;
+
+  // — Высота строк —
+  --leading-tight: 1.25;
+  --leading-normal: 1.4;
+  --leading-relaxed: 1.6;
+  --leading-loose: 1.8;
+
+  // — Веса шрифтов (из $text-weights) —
+  @each $name, $weight in t.$text-weights {
+    --font-weight-#{$name}: #{$weight};
+  }
+
+  // — Размеры текста и высота строк (из $text-sizes, для рантайма/JS) —
+  @each $size, $values in t.$text-sizes {
+    --text-#{$size}: #{list.nth($values, 1)}px;
+    --line-height-#{$size}: #{list.nth($values, 2)}px;
+  }
+
+  // — Брейкпоинты (из $media-breakpoints, для JS) —
+  @each $name, $size in t.$media-breakpoints {
+    --breakpoint-#{$name}: #{$size}px;
+  }
+
+  // — Отступы —
+  --spacing-super-small: 0.3125rem; // 5px
+  --spacing-small: 0.625rem; // 10px
+  --spacing-medium: 1.25rem; // 20px
+  --spacing-large: 1.875rem; // 30px
+  --spacing-extra-large: 3.125rem; // 50px
+  --spacing-xs: 0.25rem; // 4px
+  --spacing-sm: 0.5rem; // 8px
+  --spacing-md: 0.75rem; // 12px
+  --spacing-lg: 1rem; // 16px
+  --spacing-xl: 1.5rem; // 24px
+  --spacing-2xl: 2rem; // 32px
+  --spacing-3xl: 2.5rem; // 40px
+  --spacing-4xl: 4rem; // 64px
+  --spacing-5xl: 5rem; // 80px
+  --spacing-6xl: 6rem; // 96px
+
+  // — Радиусы скругления —
+  --border-radius-super-small: 0.3125rem; // 5px
+  --border-radius-small: 0.625rem; // 10px
+  --border-radius-medium: 1.25rem; // 20px
+  --border-radius-large: 1.875rem; // 30px
+  --border-radius-extra-large: 3.125rem; // 50px
+  --border-radius-xs: 0.125rem; // 2px
+  --border-radius-sm: 0.25rem; // 4px
+  --border-radius-md: 0.375rem; // 6px
+  --border-radius-lg: 0.5rem; // 8px
+  --border-radius-xl: 0.75rem; // 12px
+  --border-radius-2xl: 1rem; // 16px
+  --border-radius-3xl: 1.5rem; // 24px
+  --border-radius-full: 9999px;
+
+  // — Толщина границ —
+  --border-width-thin: 0.0625rem; // 1px
+  --border-width-medium: 0.125rem; // 2px
+  --border-width-thick: 0.25rem; // 4px
+
+  // — Специфичные размеры —
+  --menu-height: 2.1875rem; // 35px
+  --menu-max-width: 10.625rem; // 170px
+  --scrollbar-width: 0.75rem; // 12px
+}

@@ -96,14 +96,16 @@ export class MLProvidersManager {
   }
 
   disposeUnused(): void {
-    if (!this.requiredFeatures.has(EffectFeature.SEGMENTATION) && this.segmentationProvider) {
+    // Освобождаем модель неиспользуемого провайдера (память), но СОХРАНЯЕМ ссылку:
+    // dispose() ставит initialized=false, поэтому при повторном включении эффекта
+    // initializeRequired() переинициализирует провайдер. Обнуление ссылки здесь
+    // ломало повторный enableBlur() после stopProcessing() (провайдер терялся навсегда).
+    if (!this.requiredFeatures.has(EffectFeature.SEGMENTATION) && this.segmentationProvider?.isReady()) {
       this.segmentationProvider.dispose()
-      this.segmentationProvider = null
     }
 
-    if (!this.requiredFeatures.has(EffectFeature.FACE_MESH) && this.faceMeshProvider) {
+    if (!this.requiredFeatures.has(EffectFeature.FACE_MESH) && this.faceMeshProvider?.isReady()) {
       this.faceMeshProvider.dispose()
-      this.faceMeshProvider = null
     }
   }
 

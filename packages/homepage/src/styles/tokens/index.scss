@@ -1,0 +1,5 @@
+// Токен-карты дизайн-системы (чистый SCSS, без CSS-вывода).
+// Цвета сюда не входят — палитра живёт в ../_palette.scss как готовые CSS-переменные.
+@forward 'breakpoints';
+@forward 'typography';
+@forward 'spacing';

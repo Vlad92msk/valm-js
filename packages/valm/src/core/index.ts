@@ -17,6 +17,19 @@ export { TranscriptionController } from './transcription/controllers/transcripti
 
 // Services
 export { PermissionsService } from './permissions/permissions.service'
+export { DiagnosticsService } from './diagnostics'
+export type {
+  DiagnosticsReport,
+  DiagnosticsRunOptions,
+  DiagnosticsStep,
+  DiagnosticsStepCallback,
+  DiagnosticsStepName,
+  DiagnosticsStepStatus,
+  BrowserDiagnostics,
+  CameraDiagnostics,
+  MicrophoneDiagnostics,
+  SpeakerDiagnostics,
+} from './diagnostics'
 
 // Types
 export * from './types'

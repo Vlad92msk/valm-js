@@ -1,0 +1,104 @@
+// Миксины дизайн-системы. Используются в компонентах через @use '...abstracts'.
+@use 'sass:map';
+@use '../tokens' as t;
+
+// media(): max-width (экраны уже брейкпоинта). Mobile-last.
+@mixin media($bp) {
+  @if map.has-key(t.$media-breakpoints, $bp) {
+    @media (max-width: #{map.get(t.$media-breakpoints, $bp)}px) {
+      @content;
+    }
+  } @else {
+    @warn 'Неизвестный брейкпоинт "#{$bp}". Доступны: #{map.keys(t.$media-breakpoints)}';
+  }
+}
+
+// media-min(): min-width (экраны шире брейкпоинта).
+@mixin media-min($bp) {
+  @if map.has-key(t.$media-breakpoints, $bp) {
+    @media (min-width: #{map.get(t.$media-breakpoints, $bp) + 1}px) {
+      @content;
+    }
+  } @else {
+    @warn 'Неизвестный брейкпоинт "#{$bp}". Доступны: #{map.keys(t.$media-breakpoints)}';
+  }
+}
+
+// media-content(): базовый вызов (без media) + по одному на каждый брейкпоинт.
+// Контенту передаётся (имя-брейкпоинта, размер); для базового — ('default', null).
+// Вызывать через `using ($bp, $size)`.
+@mixin media-content($prop-name) {
+  @content('default', null);
+
+  @each $bp-name, $bp-size in t.$media-breakpoints {
+    @include media($bp-name) {
+      @content($bp-name, $bp-size);
+    }
+  }
+}
+
+// responsive-utility(): генерит utility-классы вида .prop-value\:bp.
+@mixin responsive-utility($property, $values, $prefix: null) {
+  $class-prefix: $property;
+  @if $prefix {
+    $class-prefix: $prefix;
+  }
+
+  @each $bp-name, $bp-size in t.$media-breakpoints {
+    @include media($bp-name) {
+      @each $value-name, $value in $values {
+        .#{$class-prefix}-#{$value-name}\:#{$bp-name} {
+          #{$property}: #{$value};
+        }
+      }
+    }
+  }
+}
+
+@mixin mobile-only {
+  @include media('sm') {
+    @content;
+  }
+}
+
+@mixin tablet-only {
+  @media (min-width: #{map.get(t.$media-breakpoints, 'sm') + 1}px) and (max-width: #{map.get(t.$media-breakpoints, 'md')}px) {
+    @content;
+  }
+}
+
+@mixin desktop-only {
+  @include media-min('md') {
+    @content;
+  }
+}
+
+@mixin large-desktop-only {
+  @include media-min('lg') {
+    @content;
+  }
+}
+
+// color-theme(): скоупит контент под тему (data-theme на <html>).
+// 'default' — тема по умолчанию, применяется всегда без обёртки.
+@mixin color-theme($theme) {
+  @if $theme == 'default' {
+    @content;
+  } @else {
+    :global([data-theme='#{$theme}']) & {
+      @content;
+    }
+  }
+}
+
+// scrollbar-hidden(): прячет скроллбар, сохраняя прокрутку.
+@mixin scrollbar-hidden {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+
+  &::-webkit-scrollbar {
+    width: 0;
+    height: 0;
+    display: none;
+  }
+}

@@ -3,6 +3,7 @@ import { ConfigurationService } from '../configuration'
 import { MediaStreamService } from '../media-stream'
 import { ScreenShareService } from '../screen-share'
 import { TypedEventEmitter } from '../utils'
+import { QUALITY_BITRATE_PRESETS } from './mixins/recording-config.mixin'
 
 export interface RecordingOptions {
   mimeType?: string
@@ -49,6 +50,10 @@ export class RecordingService extends TypedEventEmitter<RecordingEventMap> {
   private unsubTrackReplaced: VoidFunction | null = null
   private currentOptions: RecordingOptions = {}
   private isDestroyed = false
+  // Останавливается ли запись прямо сейчас (ручной stop или авто-стоп по лимиту).
+  // Гейтит авто-триггеры лимитов, чтобы дозапись чанков во время флаша recorder.stop()
+  // не эмитила recordingLimitReached повторно и не запускала второй stopRecording.
+  private isStopping = false
 
   constructor(
     private configService: ConfigurationService,
@@ -63,6 +68,18 @@ export class RecordingService extends TypedEventEmitter<RecordingEventMap> {
       // Мержим с конфигурацией
       const config = this.configService.getRecordingConfig()
       const mergedOptions = { ...config, ...options }
+
+      // Если quality передан напрямую в options — применяем соответствующий пресет битрейта.
+      // (Через ConfigurationController.setRecordingQuality маппинг уже выполнен в конфиге,
+      //  но при inline-передаче в startRecording его нужно применить здесь.)
+      // Явно заданные в options битрейты имеют приоритет над пресетом.
+      if (options.quality && options.quality !== 'custom') {
+        const preset = QUALITY_BITRATE_PRESETS[options.quality]
+        if (preset) {
+          mergedOptions.videoBitsPerSecond = options.videoBitsPerSecond ?? preset.video
+          mergedOptions.audioBitsPerSecond = options.audioBitsPerSecond ?? preset.audio
+        }
+      }
 
       // Создаем комбинированный поток
       this.stream = await this.createRecordingStream(mergedOptions)
@@ -117,6 +134,7 @@ export class RecordingService extends TypedEventEmitter<RecordingEventMap> {
         return
       }
 
+      this.isStopping = true
       const recorder = this.mediaRecorder
       recorder.addEventListener('stop', () => {
         // Если сервис уничтожен пока ждали событие stop — не обрабатываем
@@ -216,9 +234,12 @@ export class RecordingService extends TypedEventEmitter<RecordingEventMap> {
           duration: this.getDuration(),
         })
 
-        // Проверяем лимит размера файла (maxFileSize в МБ)
+        // Проверяем лимит размера файла (maxFileSize в МБ).
+        // isStopping гейтит повтор: во время флаша recorder.stop() прилетает ещё один
+        // dataavailable, он не должен снова эмитить лимит и запускать второй stopRecording.
         const maxFileSize = this.currentOptions.maxFileSize
-        if (maxFileSize && maxFileSize > 0 && totalSize >= maxFileSize * 1024 * 1024) {
+        if (!this.isStopping && maxFileSize && maxFileSize > 0 && totalSize >= maxFileSize * 1024 * 1024) {
+          this.isStopping = true
           this.emit('recordingLimitReached', { type: 'fileSize', limit: maxFileSize })
           this.stopRecording()
         }
@@ -261,7 +282,8 @@ export class RecordingService extends TypedEventEmitter<RecordingEventMap> {
 
     this.durationCheckInterval = setInterval(() => {
       const duration = this.getDuration()
-      if (duration >= maxDuration * 1000) {
+      if (!this.isStopping && duration >= maxDuration * 1000) {
+        this.isStopping = true
         this.emit('recordingLimitReached', { type: 'duration', limit: maxDuration })
         this.stopRecording()
       }
@@ -285,6 +307,7 @@ export class RecordingService extends TypedEventEmitter<RecordingEventMap> {
     this.startTime = 0
     this.pausedTime = 0
     this.currentOptions = {}
+    this.isStopping = false
   }
 
   private getTotalSize(): number {
@@ -306,7 +329,7 @@ export class RecordingService extends TypedEventEmitter<RecordingEventMap> {
       duration: this.getDuration(),
       fileSize: this.getTotalSize(),
       format: this.mediaRecorder?.mimeType || 'unknown',
-      quality: 'medium',
+      quality: this.currentOptions.quality || 'medium',
     }
   }
 

@@ -1,0 +1,6 @@
+// Единая точка эмиссии CSS-переменных дизайн-системы.
+// Подключать ОДИН раз — в app/globals.scss (@use '@/shared/styles' as *).
+// Компонентам сюда обращаться НЕ нужно — для SCSS-инструментария есть _abstracts.scss.
+@forward 'palette';
+@forward 'css-vars';
+@forward 'theme';

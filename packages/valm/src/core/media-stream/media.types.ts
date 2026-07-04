@@ -13,6 +13,24 @@ export interface CameraState {
   settings: MediaTrackSettings | null
 }
 
+export interface CaptureFrameOptions {
+  format?: 'image/png' | 'image/jpeg' | 'image/webp' // по умолчанию 'image/png'
+  quality?: number // 0–1, для jpeg/webp
+  // downscale; при одном размере второй считается по пропорции
+  width?: number
+  height?: number
+}
+
+export interface AdvancedCameraState {
+  zoom: { supported: boolean; min?: number; max?: number; step?: number; value?: number }
+  torch: { supported: boolean; on: boolean }
+  focus: { supported: boolean; mode?: string }
+  exposure: { supported: boolean; mode?: string }
+}
+
+export type CameraFocusMode = 'continuous' | 'manual' | 'single-shot'
+export type CameraExposureMode = 'continuous' | 'manual'
+
 export interface MicrophoneState {
   isEnabled: boolean
   isMuted: boolean

@@ -1,7 +1,7 @@
 import { TypedEventEmitter } from './typed-event-emitter'
 
 export interface VoiceActivityConfig {
-  /** Порог громкости для определения речи */
+  /** Порог громкости для определения речи (шкала 0–100) */
   volumeThreshold: number
   /** Через сколько мс тишины считаем что перестал говорить */
   silenceTimeout: number
@@ -72,7 +72,9 @@ export class VoiceActivityDetector extends TypedEventEmitter<VADEventMap> {
 
         this.analyser.getByteFrequencyData(dataArray)
         const avg = dataArray.reduce((a, b) => a + b, 0) / dataArray.length
-        const volume = this.smoothVolume(Math.round(avg))
+        // Нормализуем среднее по байтовому спектру (0–255) к шкале 0–100,
+        // чтобы диапазон совпадал с volumeThreshold (валидируется как 0–100).
+        const volume = this.smoothVolume(Math.round((avg / 255) * 100))
 
         let isSpeaking = this.lastSpeaking
         const now = Date.now()

@@ -65,9 +65,9 @@ export interface RecordingConfiguration {
   format: 'webm' | 'mp4' | 'mkv'
   /** Качество записи */
   quality: 'low' | 'medium' | 'high' | 'custom'
-  /** Битрейт видео (kbps) */
+  /** Битрейт видео (bps) */
   videoBitsPerSecond: number
-  /** Битрейт аудио (kbps) */
+  /** Битрейт аудио (bps) */
   audioBitsPerSecond: number
   /** Включать ли видео в запись */
   includeVideo: boolean
@@ -79,7 +79,7 @@ export interface RecordingConfiguration {
   autoSave: boolean
   /** Папка для сохранения (для автосохранения) */
   saveDirectory?: string
-  /** Максимальная длительность записи (в минутах, 0 = без ограничений) */
+  /** Максимальная длительность записи (в секундах, 0 = без ограничений) */
   maxDuration: number
   /** Максимальный размер файла (в MB, 0 = без ограничений) */
   maxFileSize: number

@@ -10,6 +10,7 @@ export default defineConfig({
       entry: {
         index: 'src/index.ts',
         effects: 'src/effects/index.ts',
+        'audio-effects': 'src/audio-effects/index.ts',
       },
       formats: ['es'],
     },

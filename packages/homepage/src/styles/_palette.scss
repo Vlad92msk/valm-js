@@ -1,0 +1,101 @@
+// ─────────────────────────────────────────────────────────────────────────
+// Цветовая палитра дизайн-системы.
+// Единая фирменная тёмная тема (warm-gray + оранжевый акцент), живёт прямо в
+// :root — атрибут data-theme не нужен, других тем нет.
+// Только CSS-переменные → подключается один раз через index.scss.
+// ─────────────────────────────────────────────────────────────────────────
+
+/* Фирменная тёмная тема */
+:root {
+  /* Основная темная палитра */
+  --bg-primary: hsl(60deg 2.7% 14.51%);
+  /* warm-gray → teal + magenta контраст как у Google Gemini          */
+  /* --radar-cool:   цвет/яркость "холодного" клина (teal сторона)    */
+  /* --radar-warm:   цвет/яркость "тёплого" клина (magenta сторона)   */
+  /* --radar-bright: тон периферийного ореола (тот же фон, но светлее)*/
+  /* Производные от accent-green (hsl 142) и accent-orange (hsl 25) темы */
+  --radar-cool: hsla(131, 70%, 42%, 0.5);
+  --radar-warm: hsla(5, 75%, 42%, 0.5);
+  --radar-bright: hsla(60, 1%, 32%, 0.2);
+  --bg-title: linear-gradient(135deg, #f1f5f9 0%, #94a3b8 50%, #475569 100%);
+  --bg-secondary: hsl(60deg 2.13% 18.43%);
+  --bg-tertiary: hsl(0deg 0% 22.14%);
+  --bg-tertiary-05: hsla(60, 2%, 18%, 0.59);
+  --bg-elevated: hsl(60 2.7% 20% / 1);
+  --bg-elevated-light: #41404094;
+
+  /* Цвета текста */
+  --text-primary: #ececec;
+  --text-secondary: #b4b4b4;
+  --text-muted: #78716c;
+  --text-disabled: #57534e;
+
+  /* Акцентные цвета.
+     Основной акцент приложения — ОРАНЖЕВЫЙ. Семантический алиас --accent-orange
+     (его потребляют кнопки primary, фокус-рамки, ссылки, табы и т.п.) указывает на
+     оранжевый тон — так весь акцент меняется в одной точке. Чат-пузырь (--bubble-me)
+     остаётся отдельным синим: это намеренно «спокойный» цвет действия, не акцент. */
+  --accent-orange: hsl(25 95% 53%);
+  --accent-orange-hover: hsl(25 95% 48%);
+  --accent-orange-subtle: hsl(25 95% 53% / 0.1);
+
+  --accent-green: hsl(142deg 100% 50%);
+  --accent-green-hover: hsl(142 76% 32%);
+  --accent-green-subtle: hsla(142, 76%, 36%, 0.5);
+
+  /* Исходящий пузырь чата — спокойная глубокая синяя заливка (синий = действие),
+     светлый текст. Зелёный остаётся редким акцентом «живости». */
+  --bubble-me: hsl(212deg 42% 30%);
+  --bubble-me-check: hsl(210deg 80% 80%);
+
+  --accent-orange: hsl(25 95% 53%);
+  --accent-orange-hover: hsl(25 95% 48%);
+  --accent-orange-subtle: hsl(25 95% 53% / 0.1);
+
+  --accent-red: #f44336;
+  --accent-red-hover: #e53935;
+  --accent-red-20: rgb(236 48 34 / 54%);
+  --accent-red-30: rgba(244, 67, 54, 0.3);
+
+  /* Границы и разделители */
+  --border-color: hsl(50 9% 25% / 1);
+  --border-subtle: hsl(50 9% 20% / 1);
+  --border-subtle-05: hsla(48, 10%, 20%, 0.63);
+  --border-strong: hsl(50 9% 35% / 1);
+
+  /* Тени */
+  --shadow-sm: 0 1px 2px 0 hsl(0 0% 0% / 0.15);
+  --shadow-md: 0 4px 6px -1px hsl(0 0% 0% / 0.15), 0 2px 4px -1px hsl(0 0% 0% / 0.1);
+  --shadow-lg: 0 10px 15px -3px hsl(0 0% 0% / 0.15), 0 4px 6px -2px hsl(0 0% 0% / 0.1);
+  --shadow-lg-light: 0 10px 15px -3px hsla(0, 1%, 25%, 0.15), 0 4px 6px -2px hsla(0, 0%, 41%, 0.1);
+
+  /* Интерактивные состояния */
+  --hover-overlay: hsl(50 9% 100% / 0.05);
+  --active-overlay: hsl(50 9% 100% / 0.1);
+  --focus-ring: hsl(25 95% 53% / 0.5);
+
+  /* Специфичные переменные для форм */
+  --input-bg: var(--bg-tertiary);
+  --input-border: var(--border-color);
+  --input-border-focus: var(--accent-orange);
+  --input-text: var(--text-primary);
+  --input-placeholder: var(--text-muted);
+
+  /* Переменные для кнопок */
+  --button-primary-bg: var(--accent-orange);
+  --button-primary-bg-hover: var(--accent-orange-hover);
+  --button-primary-text: #ffffff;
+
+  --button-secondary-bg: var(--bg-elevated);
+  --button-secondary-bg-hover: var(--bg-tertiary);
+  --button-secondary-text: var(--text-primary);
+  --button-secondary-border: var(--border-color);
+
+  --button-disabled-bg: var(--bg-secondary);
+  --button-disabled-text: var(--text-disabled);
+
+  /* Дополнительные цвета */
+  --bg-code: var(--bg-tertiary);
+  --bg-blockquote: var(--bg-secondary);
+  --scrollbar-color: rgba(180, 180, 180, 0.35);
+}

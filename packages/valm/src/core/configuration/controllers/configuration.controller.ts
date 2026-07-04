@@ -104,23 +104,23 @@ export class ConfigurationController {
   }
 
   updateVideoConfig = (updates: Partial<VideoConfiguration>): void => {
-    this.configService.updateVideoConfig(updates)
+    this._withUpdateNotify(() => this.configService.updateVideoConfig(updates))
   }
 
   updateAudioConfig = (updates: Partial<AudioConfiguration>): void => {
-    this.configService.updateAudioConfig(updates)
+    this._withUpdateNotify(() => this.configService.updateAudioConfig(updates))
   }
 
   updateScreenShareConfig = (updates: Partial<ScreenShareConfiguration>): void => {
-    this.configService.updateScreenShareConfig(updates)
+    this._withUpdateNotify(() => this.configService.updateScreenShareConfig(updates))
   }
 
   updateRecordingConfig = (updates: Partial<RecordingConfiguration>): void => {
-    this.configService.updateRecordingConfig(updates)
+    this._withUpdateNotify(() => this.configService.updateRecordingConfig(updates))
   }
 
   updateTranscriptionConfig = (updates: Partial<TranscriptionConfiguration>): void => {
-    this.configService.updateTranscriptionConfig(updates)
+    this._withUpdateNotify(() => this.configService.updateTranscriptionConfig(updates))
   }
 
   setVideoResolution = (width: number, height: number): void => {
@@ -188,19 +188,19 @@ export class ConfigurationController {
   }
 
   resetVideoConfig = (): void => {
-    this.configService.resetVideoConfig()
+    this._withResetNotify(() => this.configService.resetVideoConfig())
   }
 
   resetAudioConfig = (): void => {
-    this.configService.resetAudioConfig()
+    this._withResetNotify(() => this.configService.resetAudioConfig())
   }
 
   resetRecordingConfig = (): void => {
-    this.configService.resetRecordingConfig()
+    this._withResetNotify(() => this.configService.resetRecordingConfig())
   }
 
   resetTranscriptionConfig = (): void => {
-    this.configService.resetTranscriptionConfig()
+    this._withResetNotify(() => this.configService.resetTranscriptionConfig())
   }
 
   resetAll = (): void => {
@@ -258,6 +258,26 @@ export class ConfigurationController {
   onTranscriptionChange = (callback: ConfigurationChangeCallback): VoidFunction => {
     this.transcriptionChangeCallbacks.add(callback)
     return () => this.transcriptionChangeCallbacks.delete(callback)
+  }
+
+  // Оборачивает мутацию конфига: снимает полный снимок до/после и уведомляет
+  // подписчиков onUpdate (документированный контракт «любое обновление updateXxx»).
+  private _withUpdateNotify(mutate: VoidFunction): void {
+    const oldConfig = this.configService.getConfig()
+    mutate()
+    this._notifyUpdate({ oldConfig, newConfig: this.configService.getConfig() })
+  }
+
+  // То же для пер-секционных resetXxxConfig: doc обещает onReset и на них, а не
+  // только на resetAll() (resetAll уведомляет через событие configReset сервиса).
+  private _withResetNotify(mutate: VoidFunction): void {
+    const oldConfig = this.configService.getConfig()
+    mutate()
+    this._notifyReset({ oldConfig, newConfig: this.configService.getConfig() })
+  }
+
+  private _notifyUpdate(data: { oldConfig: ValmConfiguration; newConfig: ValmConfiguration }): void {
+    this.updateCallbacks.forEach((callback) => callback(data))
   }
 
   private _notifyChange(event: ConfigurationChangeEvent): void {

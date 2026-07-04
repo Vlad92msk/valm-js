@@ -1,0 +1,35 @@
+// Типографика — единый источник. Чистый SCSS, CSS-переменные эмитятся в ../_css-vars.scss.
+// size: (font-size, line-height) в px (безразмерные числа — прогоняются через rem()).
+$font-sans: 'Source Sans 3', 'Source Sans Pro', 'Helvetica Neue', Arial, sans-serif;
+$font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Monaco, monospace;
+
+$text-sizes: (
+  8: (8, 15),
+  10: (10, 15),
+  12: (12, 20),
+  14: (14, 25),
+  15: (15, 24),
+  16: (16, 20),
+  17: (17, 27),
+  18: (18, 30),
+  19: (19, 30),
+  20: (20, 25),
+  22: (22, 30),
+  25: (25, 30),
+  28: (28, 35),
+  30: (30, 35),
+  34: (34, 42),
+  36: (36, 45),
+  38: (38, 45),
+  44: (44, 50),
+  54: (54, 56),
+  80: (80, 90),
+);
+
+$text-weights: (
+  light: 300,
+  normal: 400,
+  medium: 500,
+  semibold: 600,
+  bold: 700,
+);

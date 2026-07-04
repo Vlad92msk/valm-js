@@ -107,6 +107,21 @@ export class MediaStreamService extends TypedEventEmitter<MediaStreamEventMap> {
     return this.audioManager
   }
 
+  // Аудио-граф микрофона — для MicrophoneController и AudioEffectsPlugin
+  getAudioProcessingPipeline() {
+    return this.audioManager.getPipeline()
+  }
+
+  // Публиковать обработанный трек через граф
+  async engageAudioProcessing(): Promise<void> {
+    await this.audioManager.engageProcessing()
+  }
+
+  // Вернуться к оригинальному треку микрофона
+  disengageAudioProcessing(): void {
+    this.audioManager.disengageProcessing()
+  }
+
   async enableAudio(): Promise<void> {
     const track = await this.audioManager.enable()
     if (track) {
@@ -245,7 +260,7 @@ export class MediaStreamService extends TypedEventEmitter<MediaStreamEventMap> {
         } as TrackEvent)
         this.emitStateChanged()
       }),
-      this.videoManager.on(VideoTrackEvents.TRACK_REPLACED, ({ track, oldTrack }) => {
+      this.videoManager.on(VideoTrackEvents.TRACK_REPLACED, ({ track, oldTrack, source }) => {
         if (oldTrack) {
           this.removeTrackFromStream(oldTrack)
         }
@@ -255,6 +270,7 @@ export class MediaStreamService extends TypedEventEmitter<MediaStreamEventMap> {
           track,
           oldTrack,
           stream: this.stream,
+          source,
         } as TrackEvent)
         this.emitStateChanged()
       }),

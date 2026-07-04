@@ -1,5 +1,7 @@
 import { useState, useEffect, isValidElement, type ReactNode } from 'react'
 import ReactMarkdown from 'react-markdown'
+import { Link } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import remarkGfm from 'remark-gfm'
 import remarkDirective from 'remark-directive'
 import rehypeSlug from 'rehype-slug'
@@ -11,34 +13,51 @@ import '../../styles/markdown.css'
 
 const cn = makeCn('MarkdownRenderer', styles)
 
-const GUIDE_TITLES: Record<string, string> = {
-  'getting-started': 'Getting Started',
-  'camera': 'Camera',
-  'microphone': 'Microphone',
-  'screen-share': 'Screen Share',
-  'devices': 'Devices',
-  'permissions': 'Permissions',
-  'configuration': 'Configuration',
-  'effects': 'Effects',
-  'custom-effects': 'Custom Effects',
-  'events': 'Events',
-  'plugins': 'Plugins',
-  'recording': 'Recording',
-  'transcription': 'Transcription',
-  'utilities': 'Utilities',
+// Убирает хвостовой `.md` у slug — чтобы и прямой заход на `/docs/events.md`,
+// и внутренние ссылки вида `./events.md` резолвились в существующий документ.
+const normalizeSlug = (slug: string): string => slug.replace(/\.md$/i, '')
+
+// Ссылки внутри markdown. Внутренние (на другие гайды) ведём через react-router,
+// без полной перезагрузки; внешние — обычным <a> в новой вкладке.
+const DocLink = ({ href, children }: { href?: string; children?: ReactNode }) => {
+  if (!href || /^(https?:)?\/\//i.test(href) || /^(mailto:|tel:)/i.test(href)) {
+    return <a href={href} target="_blank" rel="noreferrer">{children}</a>
+  }
+  if (href.startsWith('#')) {
+    return <a href={href}>{children}</a>
+  }
+  // ./events.md, events.md, /docs/events, ../guides/events.md → /docs/events(#hash)
+  const [path, hash] = href.split('#')
+  const slug = normalizeSlug(path.replace(/^.*\//, ''))
+  const to = `/docs/${slug}${hash ? `#${hash}` : ''}`
+  return <Link to={to}>{children}</Link>
 }
 
-const guideModules = import.meta.glob<string>('@guides/*.md', {
+// Гайды разложены по языковым папкам (guides/ru, guides/en). Грузим все,
+// а нужный выбираем по активной локали (с откатом на дефолтную).
+const guideModules = import.meta.glob<string>('@guides/*/*.md', {
   query: '?raw',
   import: 'default',
 })
 
-interface CodeBlockProps {
+const DEFAULT_DOC_LANG = 'ru'
+
+// Ключ модуля для конкретного языка и slug, либо undefined.
+const findGuideKey = (lang: string, slug: string): string | undefined => {
+  const suffix = `/${lang}/${normalizeSlug(slug)}.md`
+  return Object.keys(guideModules).find((k) => k.endsWith(suffix))
+}
+
+interface CodeFrameProps {
   code: string
+  lang?: string
   children: ReactNode
 }
 
-const CodeBlock = ({ code, children }: CodeBlockProps) => {
+// Оформление блока кода «как в macOS»: шапка с тремя точками, меткой языка и
+// кнопкой копирования, ниже — само тело кода (подсвеченное Shiki или plain <pre>).
+const CodeFrame = ({ code, lang, children }: CodeFrameProps) => {
+  const { t } = useTranslation()
   const [copied, setCopied] = useState(false)
 
   const handleCopy = () => {
@@ -50,14 +69,20 @@ const CodeBlock = ({ code, children }: CodeBlockProps) => {
 
   return (
     <div className={cn('codeBlock')}>
-      {children}
-      <button
-        className={cn('copyBtn', { copied })}
-        onClick={handleCopy}
-        aria-label="Копировать код"
-      >
-        {copied ? 'Copied!' : 'Copy'}
-      </button>
+      <div className={cn('codeBar')}>
+        <span className={cn('dot', { color: 'red' })} />
+        <span className={cn('dot', { color: 'yellow' })} />
+        <span className={cn('dot', { color: 'green' })} />
+        {lang && <span className={cn('lang')}>{lang}</span>}
+        <button
+          className={cn('copyBtn', { copied })}
+          onClick={handleCopy}
+          aria-label={t('docs.copyAria')}
+        >
+          {copied ? t('docs.copied') : t('docs.copy')}
+        </button>
+      </div>
+      <div className={cn('codeBody')}>{children}</div>
     </div>
   )
 }
@@ -88,16 +113,17 @@ const ShikiBlock = ({ lang, code }: ShikiBlockProps) => {
   }, [code, lang])
 
   return (
-    <CodeBlock code={code}>
+    <CodeFrame code={code} lang={lang}>
       {html
         ? <div dangerouslySetInnerHTML={{ __html: html }} />
         : <pre><code>{code}</code></pre>
       }
-    </CodeBlock>
+    </CodeFrame>
   )
 }
 
 const markdownComponents = {
+  a: DocLink,
   pre: ({ children }: { children?: ReactNode }) => {
     if (isValidElement<{ className?: string }>(children) && children.props.className?.startsWith('language-')) {
       return <>{children}</>
@@ -106,9 +132,9 @@ const markdownComponents = {
       ? String(children.props.children ?? '')
       : ''
     return (
-      <CodeBlock code={text}>
+      <CodeFrame code={text}>
         <pre>{children}</pre>
-      </CodeBlock>
+      </CodeFrame>
     )
   },
   code: ({ className, children }: { className?: string; children?: ReactNode }) => {
@@ -121,56 +147,47 @@ const markdownComponents = {
 
 interface MarkdownRendererProps {
   slug: string
-  onContent?: (content: string) => void
 }
 
-const MarkdownRenderer = ({ slug, onContent }: MarkdownRendererProps) => {
+const MarkdownRenderer = ({ slug }: MarkdownRendererProps) => {
+  const { t, i18n } = useTranslation()
+  const lang = i18n.language
   const [content, setContent] = useState<string | null>(null)
   const [notFound, setNotFound] = useState(false)
 
   useEffect(() => {
-    const keys = Object.keys(guideModules)
-    const key = keys.find(k => k.endsWith(`/${slug}.md`))
+    // Сначала документ на активном языке, иначе — на дефолтном (перевода может ещё не быть).
+    const key = findGuideKey(lang, slug) ?? findGuideKey(DEFAULT_DOC_LANG, slug)
 
     if (!key) {
       setNotFound(true)
       setContent(null)
-      onContent?.('')
       return
     }
 
     setContent(null)
     setNotFound(false)
+    let cancelled = false
     guideModules[key]().then(text => {
-      setContent(text)
-      onContent?.(text)
+      if (!cancelled) setContent(text)
     })
-  }, [slug, onContent])
+    return () => {
+      cancelled = true
+    }
+  }, [slug, lang])
 
-  const title = GUIDE_TITLES[slug] ?? slug
+  if (notFound) return <p className={cn('message')}>{t('docs.notFound')}</p>
+  if (content === null) return <p className={cn('message')}>{t('docs.loading')}</p>
 
   return (
-    <div className={cn()}>
-      <nav className={cn('breadcrumbs')} aria-label="breadcrumb">
-        <span className={cn('breadcrumb')}>Документация</span>
-        <span className={cn('sep')}>/</span>
-        <span className={cn('breadcrumb', { current: true })}>{title}</span>
-      </nav>
-      {notFound ? (
-        <p className={cn('message')}>Страница не найдена.</p>
-      ) : content === null ? (
-        <p className={cn('message')}>Загрузка…</p>
-      ) : (
-        <div className="markdown">
-          <ReactMarkdown
-            remarkPlugins={[remarkGfm, remarkDirective]}
-            rehypePlugins={[rehypeSlug]}
-            components={markdownComponents}
-          >
-            {content}
-          </ReactMarkdown>
-        </div>
-      )}
+    <div className="markdown">
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm, remarkDirective]}
+        rehypePlugins={[rehypeSlug]}
+        components={markdownComponents}
+      >
+        {content}
+      </ReactMarkdown>
     </div>
   )
 }

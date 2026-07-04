@@ -1,0 +1,13 @@
+<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+  <!-- VALM monogram — 2×2 grid. Colors map to the four capabilities:
+       V=camera(blue) A=audio/mic(purple) L=local/screen(teal) M=manager/record(deep purple) -->
+  <rect width="100" height="100" rx="22" fill="#1C1C1B"/>
+  <g font-family="ui-monospace, 'JetBrains Mono', SFMono-Regular, Menlo, monospace"
+     font-size="38" font-weight="700"
+     text-anchor="middle" dominant-baseline="central">
+    <text x="30" y="32" fill="#3B82F6">V</text>
+    <text x="71" y="32" fill="#8B5CF6">A</text>
+    <text x="30" y="70" fill="#14B8A6">L</text>
+    <text x="71" y="70" fill="#7C3AED">M</text>
+  </g>
+</svg>

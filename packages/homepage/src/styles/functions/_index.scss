@@ -1,0 +1,29 @@
+// Функции дизайн-системы. Переиспользуются в компонентах через @use '...abstracts'.
+@use 'sass:math';
+@use 'sass:map';
+
+// rem(): безразмерное число px → rem от базы 16. rem(0) == 0.
+@function rem($px, $base: 16) {
+  @if $px == 0 {
+    @return 0;
+  }
+  @return math.div($px, $base) * 1rem;
+}
+
+// px(): безразмерное число → px.
+@function px($n) {
+  @if math.is-unitless($n) {
+    @return #{$n}px;
+  }
+  @error 'px(): ожидается безразмерное число, получено #{$n}.';
+}
+
+// get(): безопасный доступ к карте с опциональным fallback.
+@function get($source, $key, $fallback: null) {
+  @if map.has-key($source, $key) {
+    @return map.get($source, $key);
+  } @else if $fallback != null {
+    @return $fallback;
+  }
+  @error 'get(): ключ "#{$key}" не найден в карте.';
+}

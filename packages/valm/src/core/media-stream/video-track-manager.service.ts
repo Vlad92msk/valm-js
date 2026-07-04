@@ -25,6 +25,10 @@ export interface VideoTrackState {
 export interface VideoTrackEventPayload {
   track: MediaStreamTrack
   oldTrack?: MediaStreamTrack
+  // Причина замены трека (только для TRACK_REPLACED):
+  //  'device'     — сменилось физическое устройство (switchDevice / replaceTrack)
+  //  'background' — трек подменил пайплайн эффектов (suspend/resume)
+  source?: 'device' | 'background'
 }
 
 interface VideoTrackEventMap {
@@ -60,18 +64,19 @@ export class VideoTrackManagerService extends TypedEventEmitter<VideoTrackEventM
   // Включить видео (получить трек с камеры)
   async enable(): Promise<MediaStreamTrack | null> {
     try {
-      if (this.track) {
-        // Трек уже есть — просто включаем
-        this.track.enabled = true
-        this.isMuted = false
-        this.emit(VideoTrackEvents.TRACK_UNMUTED, { track: this.getOutputTrack() })
-      } else {
-        // Создаём новый трек
-        await this.acquireTrack()
-      }
+      await this.runExclusive(async (abortController) => {
+        if (this.track) {
+          // Трек уже есть — просто включаем
+          this.track.enabled = true
+          this.isMuted = false
+          this.emit(VideoTrackEvents.TRACK_UNMUTED, { track: this.getOutputTrack() })
+        } else {
+          // Создаём новый трек
+          await this.acquireTrack(abortController)
+        }
 
-      this.isEnabled = true
-      this.emitStateIfChanged()
+        this.isEnabled = true
+      })
 
       return this.getOutputTrack()
     } catch (error) {
@@ -83,6 +88,9 @@ export class VideoTrackManagerService extends TypedEventEmitter<VideoTrackEventM
   // Включить видео с уже существующим треком (preview → publish)
   async enableWithTrack(externalTrack: MediaStreamTrack): Promise<MediaStreamTrack | null> {
     try {
+      // Отменяем in-flight acquire/switch, иначе он позже перезапишет externalTrack
+      this.abortController?.abort()
+
       if (this.track) {
         this.disable()
       }
@@ -110,6 +118,9 @@ export class VideoTrackManagerService extends TypedEventEmitter<VideoTrackEventM
 
   // Выключить видео и освободить трек
   disable(): void {
+    // Отменяем in-flight acquire/switch, чтобы он не «воскресил» трек после выключения
+    this.abortController?.abort()
+
     if (this.track) {
       const removedTrack = this.getOutputTrack() // ← возвращаем обработанный
 
@@ -195,6 +206,7 @@ export class VideoTrackManagerService extends TypedEventEmitter<VideoTrackEventM
       this.emit(VideoTrackEvents.TRACK_REPLACED, {
         track: newOutputTrack,
         oldTrack: oldOutputTrack,
+        source: 'background',
       })
     }
   }
@@ -220,6 +232,7 @@ export class VideoTrackManagerService extends TypedEventEmitter<VideoTrackEventM
       this.emit(VideoTrackEvents.TRACK_REPLACED, {
         track: newOutputTrack,
         oldTrack: oldOutputTrack,
+        source: 'background',
       })
     }
 
@@ -239,57 +252,69 @@ export class VideoTrackManagerService extends TypedEventEmitter<VideoTrackEventM
   }
   // Переключить камеру на другое устройство
   async switchDevice(deviceId?: string): Promise<void> {
-    // Отменяем предыдущую операцию если есть
-    if (this.abortController) {
-      this.abortController.abort()
-    }
+    await this.runExclusive(async (abortController) => {
+      // Проверяем нужно ли переключать
+      const currentDeviceId = this.track?.getSettings().deviceId
+      const targetDeviceId = deviceId ?? this.getConfig().deviceId
 
-    // Ждём завершения предыдущего переключения
-    if (this.pendingSwitch) {
-      try {
-        await this.pendingSwitch
-      } catch (error) {
-        if (!(error instanceof Error && error.name === 'AbortError')) {
-          throw error
-        }
+      if (currentDeviceId && targetDeviceId && currentDeviceId === targetDeviceId && this.isTrackActive()) {
+        return
       }
-    }
 
-    // Проверяем нужно ли переключать
-    const currentDeviceId = this.track?.getSettings().deviceId
-    const targetDeviceId = deviceId ?? this.getConfig().deviceId
-
-    if (currentDeviceId && targetDeviceId && currentDeviceId === targetDeviceId && this.isTrackActive()) {
-      return
-    }
-
-    this.abortController = new AbortController()
-    const currentAbortController = this.abortController
-
-    const switchOperation = (async () => {
       if (DeviceDetector.isMobile()) {
         // На мобильных устройствах останавливаем старый трек ДО getUserMedia —
         // многие устройства не поддерживают два активных camera-трека одновременно
-        await this.replaceTrackMobile(currentAbortController, deviceId)
+        await this.replaceTrackMobile(abortController, deviceId)
       } else if (this.isTrackActive()) {
-        await this.replaceTrack(currentAbortController, deviceId)
+        await this.replaceTrack(abortController, deviceId)
       } else if (this.isEnabled) {
-        await this.acquireTrack(currentAbortController, deviceId)
+        await this.acquireTrack(abortController, deviceId)
+      }
+    })
+  }
+
+  // Сериализует мутирующие операции над треком (enable / switchDevice): отменяет
+  // предыдущую in-flight операцию и ждёт её завершения, затем выполняет свою под
+  // собственным AbortController. Отменённые операции (AbortError) завершаются тихо —
+  // без ERROR-события и без осевших живых треков.
+  private async runExclusive(operation: (abortController: AbortController) => Promise<void>): Promise<void> {
+    // Захватываем предыдущую операцию и отменяем её — синхронно, чтобы конкурентные
+    // вызовы выстроились в корректную цепочку (каждый отменяет ровно предшественника)
+    const previous = this.pendingSwitch
+    this.abortController?.abort()
+
+    const currentAbortController = new AbortController()
+    this.abortController = currentAbortController
+
+    const operationPromise = (async () => {
+      // Ждём завершения предыдущей операции (её ошибку обрабатывает её собственный вызов)
+      if (previous) {
+        await previous.catch(() => {})
       }
 
-      if (this.abortController === currentAbortController) {
-        this.abortController = null
+      try {
+        await operation(currentAbortController)
+      } catch (error) {
+        // Отменённую операцию не считаем ошибкой — её вытеснила более новая
+        if (error instanceof DOMException && error.name === 'AbortError') {
+          return
+        }
+        throw error
+      } finally {
+        if (this.abortController === currentAbortController) {
+          this.abortController = null
+        }
       }
 
       this.emitStateIfChanged()
     })()
 
-    this.pendingSwitch = switchOperation
+    this.pendingSwitch = operationPromise
 
     try {
-      await switchOperation
+      await operationPromise
     } finally {
-      if (this.pendingSwitch === switchOperation) {
+      if (this.pendingSwitch === operationPromise) {
         this.pendingSwitch = null
       }
     }
@@ -403,6 +428,7 @@ export class VideoTrackManagerService extends TypedEventEmitter<VideoTrackEventM
         this.emit(VideoTrackEvents.TRACK_REPLACED, {
           track: newOutputTrack,
           oldTrack: oldOutputTrack,
+          source: 'device',
         })
       } else {
         this.emit(VideoTrackEvents.TRACK_ADDED, { track: newOutputTrack })
@@ -436,6 +462,7 @@ export class VideoTrackManagerService extends TypedEventEmitter<VideoTrackEventM
         this.emit(VideoTrackEvents.TRACK_REPLACED, {
           track: newOutputTrack,
           oldTrack: oldOutputTrack,
+          source: 'device',
         })
       } else {
         this.emit(VideoTrackEvents.TRACK_ADDED, { track: newOutputTrack })

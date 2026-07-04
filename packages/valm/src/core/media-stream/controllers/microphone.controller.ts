@@ -11,6 +11,7 @@ import {
 import { ConfigurationService } from '../../configuration'
 import { MediaStreamService } from '../media-stream.service'
 import { ConstraintsBuilderService } from '../constraints-builder.service'
+import { AudioDataCallback } from '../audio-processing-pipeline.service'
 
 export class MicrophoneController {
   private stateCallbacks = new Set<MicrophoneStateChangeCallback>()
@@ -224,6 +225,38 @@ export class MicrophoneController {
       this._notifyError({ source: 'microphone', action: 'switch', error })
       throw error
     }
+  }
+
+  // gain/визуализация через Web Audio граф; при первом использовании он включается
+  // и заменяет публикуемый трек на обработанный (onTrackReplaced)
+
+  // Множитель громкости (1.0 = без изменений)
+  setGain = (value: number): void => {
+    this.mediaStreamService.getAudioProcessingPipeline().setGain(value)
+    void this.mediaStreamService.engageAudioProcessing().catch((error) => {
+      this._notifyError({ source: 'microphone', action: 'setGain', error })
+    })
+  }
+
+  getGain = (): number => {
+    return this.mediaStreamService.getAudioProcessingPipeline().getGain()
+  }
+
+  // Спектр текущего кадра (пустой массив, пока граф не активен)
+  getFrequencyData = (): Uint8Array => {
+    return this.mediaStreamService.getAudioProcessingPipeline().getFrequencyData()
+  }
+
+  // Временная форма сигнала (пустой массив, пока граф не активен)
+  getWaveformData = (): Uint8Array => {
+    return this.mediaStreamService.getAudioProcessingPipeline().getWaveformData()
+  }
+
+  onAudioData = (callback: AudioDataCallback): VoidFunction => {
+    void this.mediaStreamService.engageAudioProcessing().catch((error) => {
+      this._notifyError({ source: 'microphone', action: 'onAudioData', error })
+    })
+    return this.mediaStreamService.getAudioProcessingPipeline().onAudioData(callback)
   }
 
   onTrackReplaced = (callback: (event: { oldTrack: MediaStreamTrack; newTrack: MediaStreamTrack }) => void): VoidFunction => {

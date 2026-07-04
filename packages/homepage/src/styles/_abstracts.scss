@@ -1,0 +1,10 @@
+// Единая точка SCSS-инструментария для компонентов:
+//   @use '@/shared/styles/abstracts' as *;
+// Отдаёт функции, миксины и токен-карты (rem(), px(), get(), media(),
+// media-content(), color-theme(), $media-breakpoints, $text-sizes, $paddings, ...).
+//
+// ВАЖНО: этот модуль НЕ эмитит CSS-переменные. Сами переменные подключаются
+// один раз глобально через src/shared/styles/index.scss (в app/globals.scss).
+@forward 'functions';
+@forward 'mixins';
+@forward 'tokens';

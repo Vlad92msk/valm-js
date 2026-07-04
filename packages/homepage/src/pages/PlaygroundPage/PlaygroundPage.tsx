@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from 'react'
-import { Link } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { Valm, DeviceDetector } from 'valm-js'
 import { EffectsPlugin, SegmentationProvider, FaceMeshProvider } from 'valm-js/effects'
+import { VideoOff, TriangleAlert } from 'lucide-react'
 
 import { Tabs } from './elements/Tabs'
 import DevicesTab from './elements/DevicesTab'
@@ -32,7 +33,15 @@ function createValm(): Valm {
   )
 }
 
+function formatDuration(ms: number): string {
+  const total = Math.floor(ms / 1000)
+  const m = String(Math.floor(total / 60)).padStart(2, '0')
+  const s = String(total % 60).padStart(2, '0')
+  return `${m}:${s}`
+}
+
 const PlaygroundPage = () => {
+  const { t } = useTranslation()
   const videoRef = useRef<HTMLVideoElement>(null)
   const screenVideoRef = useRef<HTMLVideoElement>(null)
 
@@ -43,6 +52,9 @@ const PlaygroundPage = () => {
   const [activeVideoTab, setActiveVideoTab] = useState<'camera' | 'screen'>('camera')
   const [transcripts, setTranscripts] = useState<SubtitleEntry[]>([])
   const [interimTranscript, setInterimTranscript] = useState('')
+  const [isRecording, setIsRecording] = useState(false)
+  const [isRecordingPaused, setIsRecordingPaused] = useState(false)
+  const [recordingDuration, setRecordingDuration] = useState(0)
 
   useEffect(() => {
     const m = createValm()
@@ -64,6 +76,11 @@ const PlaygroundPage = () => {
         if (screenVideoRef.current) {
           screenVideoRef.current.srcObject = state.isActive ? m.screenShareController.getStream() : null
         }
+      }),
+      m.recordingController.onStateChange((state) => {
+        setIsRecording(state.isRecording)
+        setIsRecordingPaused(state.isPaused)
+        setRecordingDuration(state.duration)
       }),
       m.transcriptionController.onTranscript((item) => {
         if (item.isFinal) {
@@ -89,6 +106,16 @@ const PlaygroundPage = () => {
     }
   }, [screenShareActive, activeVideoTab])
 
+  // Live-таймер бейджа записи (длительность приходит и через onStateChange).
+  useEffect(() => {
+    if (!media || !isRecording || isRecordingPaused) return
+    const id = setInterval(() => {
+      const state = media.recordingController.state
+      if (state) setRecordingDuration(state.duration)
+    }, 500)
+    return () => clearInterval(id)
+  }, [media, isRecording, isRecordingPaused])
+
   // ── Computed ──
 
   const multipleVideos = cameraEnabled && screenShareActive
@@ -97,6 +124,13 @@ const PlaygroundPage = () => {
     : screenShareActive ? 'screen' : 'camera'
 
   const hasSubtitles = transcripts.length > 0 || interimTranscript
+
+  const recBadge = isRecording && (
+    <div className={cn('recBadge')}>
+      <span className={cn('recDot', { paused: isRecordingPaused })} />
+      {formatDuration(recordingDuration)}
+    </div>
+  )
 
   // ── Control tabs ──
 
@@ -112,14 +146,18 @@ const PlaygroundPage = () => {
 
   return (
     <div className={cn()}>
-      <div className={cn('topbar')}>
-        <Link to="/" className={cn('homeLink')}>← Home</Link>
-        <span className={cn('pageTitle')}>Playground</span>
-      </div>
       {error && (
         <div className={cn('error')}>
-          <span>{error}</span>
-          <button type="button" className={cn('errorClose')} onClick={() => setError(null)}>×</button>
+          <TriangleAlert size={18} className={cn('errorIcon')} />
+          <span className={cn('errorText')}>{error}</span>
+          <button
+            type="button"
+            className={cn('errorClose')}
+            onClick={() => setError(null)}
+            aria-label={t('playground.closeError')}
+          >
+            ×
+          </button>
         </div>
       )}
 
@@ -134,14 +172,14 @@ const PlaygroundPage = () => {
                 className={cn('tab', { active: activeVideoTab === 'camera' })}
                 onClick={() => setActiveVideoTab('camera')}
               >
-                Camera
+                {t('playground.sourceCamera')}
               </button>
               <button
                 type="button"
                 className={cn('tab', { active: activeVideoTab === 'screen' })}
                 onClick={() => setActiveVideoTab('screen')}
               >
-                Screen
+                {t('playground.sourceScreen')}
               </button>
             </div>
           )}
@@ -157,32 +195,39 @@ const PlaygroundPage = () => {
             />
             {!cameraEnabled && activeVideo === 'camera' && (
               <div className={cn('previewPlaceholder')}>
-                <span className={cn('previewIcon')}>📹</span>
-                <p className={cn('previewLabel')}>Enable camera to see preview</p>
+                <span className={cn('previewIcon')}>
+                  <VideoOff size={30} />
+                </span>
+                <p className={cn('previewLabel')}>{t('playground.placeholder')}</p>
               </div>
             )}
+            {activeVideo === 'camera' && recBadge}
           </section>
 
           {/* Screen share preview — always mounted */}
-          <section className={cn('preview', { hidden: activeVideo !== 'screen' })}>
+          <section className={cn('preview', { screen: true, hidden: activeVideo !== 'screen' })}>
             <video
               ref={screenVideoRef}
-              className={cn('video', { hidden: !screenShareActive })}
+              className={cn('video', { contain: true, hidden: !screenShareActive })}
               autoPlay
               playsInline
               muted
             />
+            {activeVideo === 'screen' && recBadge}
           </section>
 
           {/* Subtitles under video */}
           {hasSubtitles && (
             <div className={cn('subtitles')}>
-              {transcripts.slice(-3).map((t, i) => (
-                <span key={i} className={cn('subtitleLine')}>{t.text} </span>
-              ))}
-              {interimTranscript && (
-                <span className={cn('subtitleLine', { interim: true })}>{interimTranscript}</span>
-              )}
+              <div className={cn('subtitlesLabel')}>{t('playground.transcription')}</div>
+              <p className={cn('subtitlesText')}>
+                {transcripts.slice(-3).map((tr, i) => (
+                  <span key={i} className={cn('subtitleLine')}>{tr.text} </span>
+                ))}
+                {interimTranscript && (
+                  <span className={cn('subtitleLine', { interim: true })}>{interimTranscript}</span>
+                )}
+              </p>
             </div>
           )}
         </div>

@@ -5,7 +5,6 @@
   scroll-behavior: smooth;
 }
 
-.markdown h1,
 .markdown h2,
 .markdown h3,
 .markdown h4 {
@@ -16,15 +15,29 @@
   margin-bottom: var(--space-4);
 }
 
+/* Заголовок документа — крупный титул из дизайна VALM Docs */
 .markdown h1 {
-  font-size: var(--text-3xl);
+  font-size: clamp(34px, 5vw, 48px);
   font-weight: var(--weight-bold);
-  color: var(--color-accent);
+  letter-spacing: -0.03em;
+  line-height: 1.05;
+  color: var(--color-text);
+  margin: 0 0 18px;
+}
+
+/* Первый абзац после заголовка — «лид» (вводный текст) */
+.markdown h1 + p {
+  font-size: 19px;
+  line-height: 1.6;
+  color: var(--color-secondary);
+  margin: 0 0 36px;
 }
 
 .markdown h2 {
-  font-size: var(--text-2xl);
+  font-size: 24px;
   font-weight: var(--weight-semibold);
+  letter-spacing: -0.02em;
+  margin: 14px 0 12px;
 }
 
 .markdown h3 {
@@ -38,8 +51,10 @@
 }
 
 .markdown p {
+  font-size: 16px;
   margin-bottom: var(--space-4);
-  line-height: var(--leading-relaxed);
+  line-height: 1.7;
+  color: var(--color-secondary);
 }
 
 .markdown ul,
@@ -68,26 +83,12 @@
   border: 1px solid var(--color-border);
 }
 
-/* Code blocks */
+/* Code blocks — рамку и фон рисует «macOS»-обёртка (MarkdownRenderer codeBody).
+   Здесь только базовая типографика на случай отсутствия обёртки. */
 .markdown pre {
-  background-color: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius);
-  padding: var(--space-4);
-  overflow-x: auto;
-  margin-bottom: var(--space-6);
   font-family: var(--font-mono);
   scrollbar-width: thin;
   scrollbar-color: var(--color-border) transparent;
-}
-
-.markdown pre::-webkit-scrollbar {
-  height: 4px;
-}
-
-.markdown pre::-webkit-scrollbar-thumb {
-  background: var(--color-border);
-  border-radius: 2px;
 }
 
 .markdown pre code {
@@ -95,30 +96,37 @@
   border: none;
   padding: 0;
   font-size: var(--text-sm);
-  line-height: 1.7;
+  line-height: 1.75;
   color: inherit;
 }
 
-/* Blockquote */
+/* Blockquote → callout-заметка в синем акценте (как note в дизайне) */
 .markdown blockquote {
-  border-left: 2px solid var(--color-border);
-  padding: var(--space-2) var(--space-4);
-  margin-bottom: var(--space-4);
-  color: var(--color-muted);
+  display: flex;
+  gap: 12px;
+  background: var(--accent-blue-subtle);
+  border: 1px solid var(--accent-blue);
+  border-radius: 12px;
+  padding: 14px 16px;
+  margin-bottom: var(--space-6);
+  color: var(--color-secondary);
 }
 
 .markdown blockquote p {
-  color: var(--color-muted);
+  color: var(--color-secondary);
   margin-bottom: 0;
+  font-size: 15px;
+  line-height: 1.6;
 }
 
 /* Links */
 .markdown a {
-  color: var(--color-accent);
+  color: var(--accent-blue);
   text-decoration: none;
 }
 
 .markdown a:hover {
+  color: var(--accent-blue-hover);
   text-decoration: underline;
 }
 

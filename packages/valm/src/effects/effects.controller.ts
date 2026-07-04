@@ -56,6 +56,10 @@ export class EffectsController extends TypedEventEmitter<EffectsEventMap> {
   private stateCallbacks = new Set<EffectsStateChangeCallback>()
   private errorCallbacks = new Set<EffectsErrorCallback>()
 
+  // Идёт ли сейчас обработка кадров эффектами (>=1 активный эффект).
+  // Отслеживаем переходы, чтобы симметрично эмитить PROCESSING_STARTED/STOPPED.
+  private processingActive = false
+
   constructor(private mediaStreamService: MediaStreamService) {
     super()
   }
@@ -115,6 +119,16 @@ export class EffectsController extends TypedEventEmitter<EffectsEventMap> {
   getEffects = (): IVideoEffect[] => {
     const pipeline = this.mediaStreamService.getVideoTrackManager().getPipeline()
     return pipeline?.getEffects() ?? []
+  }
+
+  // Изменить порядок применения эффектов. Порядок важен: эффекты применяются цепочкой,
+  // последний пишет в выходной кадр. Имена, отсутствующие в order, дописываются в конец
+  // в исходном порядке.
+  reorderEffects = (order: string[]): void => {
+    const pipeline = this.mediaStreamService.getVideoTrackManager().getPipeline()
+    if (!pipeline) return
+    pipeline.reorderEffects(order)
+    this.notifyStateChange()
   }
 
   // Включить размытие фона
@@ -373,7 +387,7 @@ export class EffectsController extends TypedEventEmitter<EffectsEventMap> {
     this.virtualBackgroundEffect = null
 
     this.maybeSuspendPipeline()
-    this.emit(EffectsEvents.PROCESSING_STOPPED)
+    // PROCESSING_STOPPED эмитится из notifyStateChange по переходу activeEffects → 0
     this.notifyStateChange()
   }
 
@@ -429,6 +443,17 @@ export class EffectsController extends TypedEventEmitter<EffectsEventMap> {
 
   private notifyStateChange(): void {
     const currentState = this.state
+
+    // Переход по числу активных эффектов → симметричные PROCESSING_STARTED/STOPPED.
+    const active = currentState.activeEffects.length > 0
+    if (active && !this.processingActive) {
+      this.processingActive = true
+      this.emit(EffectsEvents.PROCESSING_STARTED)
+    } else if (!active && this.processingActive) {
+      this.processingActive = false
+      this.emit(EffectsEvents.PROCESSING_STOPPED)
+    }
+
     this.stateCallbacks.forEach((callback) => callback(currentState))
     this.emit(EffectsEvents.STATE_CHANGED, currentState)
   }

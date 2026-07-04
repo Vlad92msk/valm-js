@@ -1,6 +1,7 @@
 import { AudioConfiguration } from '../configuration/configuration.types'
 import { TypedEventEmitter } from '../utils'
 import { VoiceActivityDetector, VoiceActivityDetectorFactory } from '../utils'
+import { AudioProcessingPipelineService } from './audio-processing-pipeline.service'
 import { ConstraintsBuilderService } from './constraints-builder.service'
 
 export enum AudioTrackEvents {
@@ -54,6 +55,10 @@ export class AudioTrackManagerService extends TypedEventEmitter<AudioTrackEventM
 
   private vad: VoiceActivityDetector | null = null
 
+  // Аудио-граф (gain/визуализация/ML); простаивает, пока не включён через engageProcessing
+  private pipeline = new AudioProcessingPipelineService()
+  private pipelineEngaged = false
+
   private pendingSwitch: Promise<void> | null = null
   private abortController: AbortController | null = null
 
@@ -66,23 +71,72 @@ export class AudioTrackManagerService extends TypedEventEmitter<AudioTrackEventM
     super()
   }
 
+  getPipeline(): AudioProcessingPipelineService {
+    return this.pipeline
+  }
+
+  // Оригинальный трек микрофона (без обработки графом)
+  getRawTrack(): MediaStreamTrack | null {
+    return this.track
+  }
+
+  // Обработанный трек, если граф активен, иначе оригинальный
+  getOutputTrack(): MediaStreamTrack | null {
+    if (this.pipeline.isRunning()) {
+      return this.pipeline.getOutputTrack() ?? this.track
+    }
+    return this.track
+  }
+
+  // Включить обработку: публиковать трек через Web Audio граф
+  async engageProcessing(): Promise<void> {
+    this.pipelineEngaged = true
+
+    if (!this.track || this.pipeline.isRunning()) return
+
+    const oldOutput = this.getOutputTrack()
+    await this.pipeline.start(this.track)
+    const newOutput = this.getOutputTrack()
+
+    if (oldOutput && newOutput && oldOutput !== newOutput) {
+      this.emit(AudioTrackEvents.TRACK_REPLACED, { track: newOutput, oldTrack: oldOutput })
+    }
+  }
+
+  // Выключить обработку: вернуться к оригинальному треку
+  disengageProcessing(): void {
+    this.pipelineEngaged = false
+
+    if (!this.pipeline.isRunning()) return
+
+    const oldOutput = this.getOutputTrack()
+    this.pipeline.stop()
+    const newOutput = this.getOutputTrack()
+
+    if (oldOutput && newOutput && oldOutput !== newOutput) {
+      this.emit(AudioTrackEvents.TRACK_REPLACED, { track: newOutput, oldTrack: oldOutput })
+    }
+  }
+
   // Включить аудио (получить трек с микрофона)
   async enable(): Promise<MediaStreamTrack | null> {
     try {
-      if (this.track) {
-        // Трек уже есть — просто включаем
-        this.track.enabled = true
-        this.isMuted = false
-        this.initVAD(this.track)
-        this.emit(AudioTrackEvents.TRACK_UNMUTED, { track: this.track })
-      } else {
-        // Создаём новый трек
-        await this.acquireTrack()
-      }
+      await this.runExclusive(async (abortController) => {
+        if (this.track) {
+          // Трек уже есть — просто включаем
+          this.track.enabled = true
+          this.isMuted = false
+          this.initVAD(this.track)
+          this.emit(AudioTrackEvents.TRACK_UNMUTED, { track: this.getOutputTrack()! })
+        } else {
+          // Создаём новый трек
+          await this.acquireTrack(abortController)
+        }
 
-      this.isEnabled = true
-      this.emitStateIfChanged()
-      return this.track
+        this.isEnabled = true
+      })
+
+      return this.getOutputTrack()
     } catch (error) {
       this.handleError('Failed to enable audio', error)
       return null
@@ -92,6 +146,9 @@ export class AudioTrackManagerService extends TypedEventEmitter<AudioTrackEventM
   // Включить аудио с уже существующим треком (preview → publish)
   async enableWithTrack(track: MediaStreamTrack): Promise<MediaStreamTrack | null> {
     try {
+      // Отменяем in-flight acquire/switch, иначе он позже перезапишет externalTrack
+      this.abortController?.abort()
+
       if (this.track) {
         this.disable()
       }
@@ -103,10 +160,11 @@ export class AudioTrackManagerService extends TypedEventEmitter<AudioTrackEventM
       track.addEventListener('ended', () => this.handleTrackEnded(track))
 
       this.initVAD(track)
+      await this.startPipelineIfEngaged()
 
-      this.emit(AudioTrackEvents.TRACK_ADDED, { track })
+      this.emit(AudioTrackEvents.TRACK_ADDED, { track: this.getOutputTrack()! })
       this.emitStateIfChanged()
-      return track
+      return this.getOutputTrack()
     } catch (error) {
       this.handleError('Failed to enable audio with track', error)
       return null
@@ -115,10 +173,14 @@ export class AudioTrackManagerService extends TypedEventEmitter<AudioTrackEventM
 
   // Выключить аудио и освободить трек
   disable(): void {
+    // Отменяем in-flight acquire/switch, чтобы он не «воскресил» трек после выключения
+    this.abortController?.abort()
+
     if (this.track) {
-      const removedTrack = this.track
+      const removedTrack = this.getOutputTrack()!
 
       this.destroyVAD()
+      this.pipeline.stop()
       this.track.stop()
       this.track = null
       this.isEnabled = false
@@ -138,7 +200,7 @@ export class AudioTrackManagerService extends TypedEventEmitter<AudioTrackEventM
       this.track.enabled = false
       this.isMuted = true
       this.destroyVAD()
-      this.emit(AudioTrackEvents.TRACK_MUTED, { track: this.track })
+      this.emit(AudioTrackEvents.TRACK_MUTED, { track: this.getOutputTrack()! })
       this.emitStateIfChanged()
     }
   }
@@ -149,72 +211,85 @@ export class AudioTrackManagerService extends TypedEventEmitter<AudioTrackEventM
       this.track.enabled = true
       this.isMuted = false
       this.initVAD(this.track)
-      this.emit(AudioTrackEvents.TRACK_UNMUTED, { track: this.track })
+      this.emit(AudioTrackEvents.TRACK_UNMUTED, { track: this.getOutputTrack()! })
       this.emitStateIfChanged()
     }
   }
 
   // Переключить микрофон на другое устройство
   async switchDevice(deviceId?: string): Promise<void> {
-    // Отменяем предыдущую операцию если есть
-    if (this.abortController) {
-      this.abortController.abort()
-    }
+    await this.runExclusive(async (abortController) => {
+      // Проверяем нужно ли переключать
+      const currentDeviceId = this.track?.getSettings().deviceId
+      const targetDeviceId = deviceId ?? this.getConfig().deviceId
 
-    // Ждём завершения предыдущего переключения
-    if (this.pendingSwitch) {
-      try {
-        await this.pendingSwitch
-      } catch (error) {
-        if (!(error instanceof Error && error.name === 'AbortError')) {
-          throw error
-        }
+      if (currentDeviceId && targetDeviceId && currentDeviceId === targetDeviceId && this.isTrackActive()) {
+        return
       }
-    }
 
-    // Проверяем нужно ли переключать
-    const currentDeviceId = this.track?.getSettings().deviceId
-    const targetDeviceId = deviceId ?? this.getConfig().deviceId
-
-    if (currentDeviceId && targetDeviceId && currentDeviceId === targetDeviceId && this.isTrackActive()) {
-      return
-    }
-
-    this.abortController = new AbortController()
-    const currentAbortController = this.abortController
-
-    const switchOperation = (async () => {
       if (this.isTrackActive()) {
-        await this.replaceTrack(currentAbortController, deviceId)
+        await this.replaceTrack(abortController, deviceId)
       } else if (this.isEnabled) {
-        await this.acquireTrack(currentAbortController, deviceId)
+        await this.acquireTrack(abortController, deviceId)
+      }
+    })
+  }
+
+  // Сериализует мутирующие операции над треком (enable / switchDevice): отменяет
+  // предыдущую in-flight операцию и ждёт её завершения, затем выполняет свою под
+  // собственным AbortController. Отменённые операции (AbortError) завершаются тихо —
+  // без ERROR-события и без осевших живых треков.
+  private async runExclusive(operation: (abortController: AbortController) => Promise<void>): Promise<void> {
+    // Захватываем предыдущую операцию и отменяем её — синхронно, чтобы конкурентные
+    // вызовы выстроились в корректную цепочку (каждый отменяет ровно предшественника)
+    const previous = this.pendingSwitch
+    this.abortController?.abort()
+
+    const currentAbortController = new AbortController()
+    this.abortController = currentAbortController
+
+    const operationPromise = (async () => {
+      // Ждём завершения предыдущей операции (её ошибку обрабатывает её собственный вызов)
+      if (previous) {
+        await previous.catch(() => {})
       }
 
-      if (this.abortController === currentAbortController) {
-        this.abortController = null
+      try {
+        await operation(currentAbortController)
+      } catch (error) {
+        // Отменённую операцию не считаем ошибкой — её вытеснила более новая
+        if (error instanceof DOMException && error.name === 'AbortError') {
+          return
+        }
+        throw error
+      } finally {
+        if (this.abortController === currentAbortController) {
+          this.abortController = null
+        }
       }
 
       this.emitStateIfChanged()
     })()
 
-    this.pendingSwitch = switchOperation
+    this.pendingSwitch = operationPromise
 
     try {
-      await switchOperation
+      await operationPromise
     } finally {
-      if (this.pendingSwitch === switchOperation) {
+      if (this.pendingSwitch === operationPromise) {
         this.pendingSwitch = null
       }
     }
   }
 
   getTrack(): MediaStreamTrack | null {
-    return this.track
+    return this.getOutputTrack()
   }
 
   getState(): AudioTrackState {
+    // deviceId/settings — с оригинального трека; track — с выхода графа (то, что публикуется)
     return {
-      track: this.track,
+      track: this.getOutputTrack(),
       isEnabled: this.isEnabled,
       isMuted: this.isMuted,
       isSpeaking: this.isSpeaking,
@@ -233,7 +308,15 @@ export class AudioTrackManagerService extends TypedEventEmitter<AudioTrackEventM
 
     this.destroyVAD()
     this.disable()
+    this.pipeline.destroy()
     this.removeAllListeners()
+  }
+
+  // Запустить граф на текущем треке, если обработка включена
+  private async startPipelineIfEngaged(): Promise<void> {
+    if (this.pipelineEngaged && this.track) {
+      await this.pipeline.start(this.track)
+    }
   }
 
   private async acquireTrack(abortController?: AbortController, deviceId?: string): Promise<void> {
@@ -263,8 +346,9 @@ export class AudioTrackManagerService extends TypedEventEmitter<AudioTrackEventM
       newTrack.addEventListener('ended', () => this.handleTrackEnded(newTrack))
 
       this.initVAD(newTrack)
+      await this.startPipelineIfEngaged()
 
-      this.emit(AudioTrackEvents.TRACK_ADDED, { track: newTrack })
+      this.emit(AudioTrackEvents.TRACK_ADDED, { track: this.getOutputTrack()! })
     } catch (error) {
       if (tempStream) {
         tempStream.getTracks().forEach((t) => t.stop())
@@ -283,6 +367,7 @@ export class AudioTrackManagerService extends TypedEventEmitter<AudioTrackEventM
 
     try {
       const oldTrack = this.track
+      const oldOutputTrack = this.getOutputTrack()
       const config = this.getConfig()
       const effectiveConfig = deviceId ? { ...config, deviceId } : config
       const constraints = ConstraintsBuilderService.buildAudioConstraints(effectiveConfig)
@@ -300,24 +385,27 @@ export class AudioTrackManagerService extends TypedEventEmitter<AudioTrackEventM
 
       const newTrack = tempStream.getAudioTracks()[0]
 
-      // Останавливаем VAD перед заменой
+      // Останавливаем VAD и граф (он привязан к старому треку) перед заменой
       this.destroyVAD()
+      this.pipeline.stop()
 
       if (oldTrack) {
         oldTrack.stop()
-        this.emit(AudioTrackEvents.TRACK_REMOVED, { track: oldTrack })
       }
 
       this.track = newTrack
       newTrack.addEventListener('ended', () => this.handleTrackEnded(newTrack))
 
-      // Запускаем VAD для нового трека
+      // Запускаем VAD и граф для нового трека
       this.initVAD(newTrack)
+      await this.startPipelineIfEngaged()
 
-      this.emit(AudioTrackEvents.TRACK_ADDED, { track: newTrack })
+      const newOutputTrack = this.getOutputTrack()!
 
-      if (oldTrack) {
-        this.emit(AudioTrackEvents.TRACK_REPLACED, { track: newTrack, oldTrack })
+      if (oldOutputTrack) {
+        this.emit(AudioTrackEvents.TRACK_REPLACED, { track: newOutputTrack, oldTrack: oldOutputTrack })
+      } else {
+        this.emit(AudioTrackEvents.TRACK_ADDED, { track: newOutputTrack })
       }
     } catch (error) {
       if (tempStream) {
@@ -373,12 +461,15 @@ export class AudioTrackManagerService extends TypedEventEmitter<AudioTrackEventM
   // Микрофон отключён или трек завершился
   private handleTrackEnded(track: MediaStreamTrack): void {
     if (this.track === track) {
+      const removedTrack = this.getOutputTrack()!
+
       this.destroyVAD()
+      this.pipeline.stop()
       this.track = null
       this.isEnabled = false
       this.isMuted = false
 
-      this.emit(AudioTrackEvents.TRACK_REMOVED, { track })
+      this.emit(AudioTrackEvents.TRACK_REMOVED, { track: removedTrack })
       this.emitStateIfChanged()
     }
   }

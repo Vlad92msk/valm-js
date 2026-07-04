@@ -1,53 +1,11 @@
-import { Link, NavLink } from 'react-router-dom'
+import { NavLink } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 
 import styles from './Sidebar.module.scss'
 import { makeCn } from '../../utils/makeCn'
+import { DOCS_NAV } from '../../config/docsNav'
+
 const cn = makeCn('Sidebar', styles)
-
-interface NavItem {
-  slug: string
-  title: string
-}
-
-interface NavGroup {
-  label: string
-  items: NavItem[]
-}
-
-const NAV_GROUPS: NavGroup[] = [
-  {
-    label: 'НАЧАЛО РАБОТЫ',
-    items: [{ slug: 'getting-started', title: 'Getting Started' }],
-  },
-  {
-    label: 'CORE',
-    items: [
-      { slug: 'camera', title: 'Camera' },
-      { slug: 'microphone', title: 'Microphone' },
-      { slug: 'screen-share', title: 'Screen Share' },
-      { slug: 'devices', title: 'Devices' },
-      { slug: 'permissions', title: 'Permissions' },
-      { slug: 'configuration', title: 'Configuration' },
-    ],
-  },
-  {
-    label: 'EFFECTS',
-    items: [
-      { slug: 'effects', title: 'Effects' },
-      { slug: 'custom-effects', title: 'Custom Effects' },
-    ],
-  },
-  {
-    label: 'ADVANCED',
-    items: [
-      { slug: 'events', title: 'Events' },
-      { slug: 'plugins', title: 'Plugins' },
-      { slug: 'recording', title: 'Recording' },
-      { slug: 'transcription', title: 'Transcription' },
-      { slug: 'utilities', title: 'Utilities' },
-    ],
-  },
-]
 
 interface SidebarProps {
   isOpen: boolean
@@ -55,19 +13,16 @@ interface SidebarProps {
 }
 
 const Sidebar = ({ isOpen, onClose }: SidebarProps) => {
+  const { t } = useTranslation()
+
   return (
     <>
       {isOpen && <div className={cn('overlay')} onClick={onClose} />}
       <aside className={cn({ open: isOpen })}>
-        <div className={cn('home')}>
-
-          <Link to="/" className={cn('homeLink')}>
-            Home</Link>
-        </div>
         <nav className={cn('nav')}>
-          {NAV_GROUPS.map((group) => (
-            <div key={group.label} className={cn('group')}>
-              <span className={cn('groupLabel')}>{group.label}</span>
+          {DOCS_NAV.map((group) => (
+            <div key={group.key} className={cn('group')}>
+              <div className={cn('groupLabel')}>{t(`sidebar.groups.${group.key}`)}</div>
               <ul className={cn('list')}>
                 {group.items.map((item) => (
                   <li key={item.slug}>

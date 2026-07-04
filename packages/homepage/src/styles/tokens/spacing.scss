@@ -1,0 +1,30 @@
+// Отступы / радиусы / границы — единый источник.
+// Карты ссылаются на CSS-переменные (сами значения — в ../_css-vars.scss),
+// чтобы значения были темизируемы и доступны из JS.
+$paddings: (
+  super-small: var(--spacing-super-small),
+  small: var(--spacing-small),
+  medium: var(--spacing-medium),
+  large: var(--spacing-large),
+  extra-large: var(--spacing-extra-large),
+);
+
+$border-radius: (
+  super-small: var(--border-radius-super-small),
+  small: var(--border-radius-small),
+  medium: var(--border-radius-medium),
+  large: var(--border-radius-large),
+  extra-large: var(--border-radius-extra-large),
+);
+
+$border-widths: (
+  thin: var(--border-width-thin),
+  medium: var(--border-width-medium),
+  thick: var(--border-width-thick),
+);
+
+// Скалярные алиасы под старый API компонентов.
+$border-radius--super-small: var(--border-radius-super-small);
+$border-radius--small: var(--border-radius-small);
+$border-size--super-small: var(--border-width-thin);
+$paddings--medium: var(--spacing-medium);

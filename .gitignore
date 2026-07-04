@@ -5,3 +5,17 @@ dist/
 .npmrc
 .claude/settings.local.json
 .firebase/
+
+# IDE
+.idea/
+
+# Internal dev-agent instructions (not published)
+agents/
+
+# Playwright e2e artifacts (Playwright runs from repo root)
+test-results/
+playwright-report/
+playwright/.cache/
+
+# Project uses Yarn workspaces — no npm lockfile
+package-lock.json

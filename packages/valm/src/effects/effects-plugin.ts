@@ -1,6 +1,8 @@
 import { IMediaPlugin, PluginContext } from '../core'
 import { EffectsController } from './effects.controller'
 import { CustomProvidersConfig } from './pipeline/ml-providers-manager'
+import { FaceMeshProvider } from './providers/face-mesh.provider'
+import { SegmentationProvider } from './providers/segmentation.provider'
 import { EffectFeature, PerformanceConfig } from './types'
 import { VideoProcessingPipelineService } from './pipeline/video-processing-pipeline.service'
 
@@ -47,18 +49,15 @@ export class EffectsPlugin implements IMediaPlugin {
     const videoManager = context.mediaStreamService.getVideoTrackManager()
     videoManager.setPipeline(this._pipeline)
 
-    // Регистрируем кастомные провайдеры если переданы
-    if (this._options.providers) {
-      const providers = this._options.providers
-      const manager = this._pipeline.getProvidersManager()
-
-      if (providers.segmentation) {
-        manager.registerProvider(EffectFeature.SEGMENTATION, providers.segmentation)
-      }
-      if (providers.faceMesh) {
-        manager.registerProvider(EffectFeature.FACE_MESH, providers.faceMesh)
-      }
-    }
+    // Регистрируем ML-провайдеры. По умолчанию — встроенные MediaPipe
+    // (без них blur/virtual-background не получают segmentationMask и молча
+    // отваливаются в fallback). Переданные в options провайдеры их заменяют.
+    // Регистрация ленива по стоимости: провайдер грузит модель только когда
+    // эффект реально требует его фичу (см. MLProvidersManager.initializeRequired).
+    const providers = this._options.providers ?? {}
+    const manager = this._pipeline.getProvidersManager()
+    manager.registerProvider(EffectFeature.SEGMENTATION, providers.segmentation ?? new SegmentationProvider())
+    manager.registerProvider(EffectFeature.FACE_MESH, providers.faceMesh ?? new FaceMeshProvider())
 
     // Создаём контроллер эффектов
     this._controller = new EffectsController(context.mediaStreamService)

@@ -3,7 +3,44 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <link rel="icon" type="image/svg+xml" href="/src/assets/logo.svg" />
+    <link rel="icon" type="image/svg+xml" href="/src/assets/favicon.svg" />
+
+    <meta
+      name="description"
+      content="valm — TypeScript library for local media in the browser: camera, microphone, screen share, recording, transcription and video effects. One framework-agnostic API over MediaStream."
+    />
+    <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large" />
+    <link rel="canonical" href="https://valm-js.web.app/" />
+
+    <!-- LLM-friendly documentation (https://llmstxt.org) -->
+    <link rel="alternate" type="text/plain" title="llms.txt" href="/llms.txt" />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="valm — all your media work in one API" />
+    <meta
+      property="og:description"
+      content="Camera, screen, effects, recording and transcription — a single framework-agnostic layer over MediaStream."
+    />
+    <meta property="og:url" content="https://valm-js.web.app/" />
+    <meta property="og:image" content="https://valm-js.web.app/og.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="valm — all your media work in one API" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:image" content="https://valm-js.web.app/og.png" />
+
+    <!-- Предзагрузка ключевых начертаний (виден первый экран): текст, заголовки,
+         mono-бейджи. Стартует во время парсинга HTML → нет «прыжка» шрифтов.
+         crossorigin обязателен: woff2 всегда грузится в CORS-режиме. -->
+    <link rel="preload" href="/fonts/source-sans-3-400-cyrillic.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/source-sans-3-400-latin.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/source-sans-3-600-cyrillic.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/source-sans-3-600-latin.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/source-sans-3-700-cyrillic.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/source-sans-3-700-latin.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/jetbrains-mono-400-cyrillic.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/jetbrains-mono-400-latin.woff2" as="font" type="font/woff2" crossorigin />
+
     <title>valm</title>
   </head>
   <body>
