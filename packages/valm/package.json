@@ -1,6 +1,6 @@
 {
   "name": "valm-js",
-  "version": "0.2.1",
+  "version": "1.0.0",
   "description": "Browser media stream manager — camera, microphone, screen share, recording, transcription, and video effects",
   "keywords": [
     "media",
@@ -58,7 +58,11 @@
     "test:e2e": "playwright test",
     "test:e2e:src": "VALM_SOURCE=src playwright test",
     "test:e2e:ui": "playwright test --ui",
-    "prepublishOnly": "yarn build"
+    "prepublishOnly": "yarn build",
+    "release": "npm publish",
+    "release:patch": "npm version patch --no-git-tag-version && npm publish",
+    "release:minor": "npm version minor --no-git-tag-version && npm publish",
+    "release:major": "npm version major --no-git-tag-version && npm publish"
   },
   "dependencies": {
     "eventemitter3": "^5.0.0"

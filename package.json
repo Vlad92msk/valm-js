@@ -8,6 +8,10 @@
     "build": "yarn workspace valm-js build",
     "dev:homepage": "yarn workspace homepage dev",
     "typecheck": "yarn workspaces foreach -A run typecheck",
-    "deploy:homepage": "yarn workspace homepage build && firebase deploy --only hosting"
+    "deploy:homepage": "yarn workspace homepage build && firebase deploy --only hosting",
+    "release:valm": "yarn workspace valm-js release",
+    "release:valm:patch": "yarn workspace valm-js release:patch",
+    "release:valm:minor": "yarn workspace valm-js release:minor",
+    "release:valm:major": "yarn workspace valm-js release:major"
   }
 }
