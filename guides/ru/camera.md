@@ -26,10 +26,14 @@ camera.destroy()                  // уничтожить контроллер, 
 ### Переключение устройства
 
 ```typescript
-await camera.switchDevice(deviceId)   // переключить трек немедленно (если камера включена)
+const result = await camera.switchDevice(deviceId)  // переключить трек немедленно (если камера включена)
+// result: { applied: boolean, deviceId, reason?: 'noop' | 'superseded' | 'disabled' }
+await camera.reacquire()              // переоткрыть текущую камеру (например, после NotReadableError)
 await camera.updateDevice(deviceId)   // обновить deviceId в конфигурации без переключения трека
 await camera.toggleFacing()           // переключить между 'user' (фронтальная) и 'environment' (задняя)
 ```
+
+Если новую камеру открыть не удалось, `switchDevice` отклоняется, а текущий трек (включая выход видео-эффектов) продолжает работать; `deviceId` в конфигурации откатывается. На мобильных (одна камера за раз) Valm пытается вернуть прежнюю камеру, а если не выходит, выключает камеру с `onStateChange`.
 
 ### Превью
 
@@ -158,6 +162,7 @@ interface CameraState {
   hasDevice: boolean                   // обнаружено видеоустройство
   deviceId: string | null              // ID текущего устройства
   settings: MediaTrackSettings | null  // настройки активного трека
+  isSourceMuted: boolean               // источник не отдаёт кадры (track.muted: закрыта крышка, камера занята)
 }
 ```
 
@@ -171,6 +176,8 @@ interface VideoConfiguration {
   frameRate: number
   facingMode: 'user' | 'environment'
   constraints: MediaTrackConstraints
+  deviceFallback?: 'none' | 'default'  // выбранной камеры нет: 'none' — ошибка (по умолчанию), 'default' — открыть системную
+  sourceMuteDebounceMs?: number        // задержка перед onSourceMuteChange({ muted: true }) (по умолчанию 0)
 }
 ```
 
@@ -189,9 +196,14 @@ camera.onError((error: MediaErrorEvent) => {
   // error.error: unknown
 })
 
-camera.onTrackReplaced(({ oldTrack, newTrack, source }) => {
+camera.onTrackReplaced(({ oldTrack, newTrack, source, isMuted }) => {
   // source: 'device' | 'background' | undefined
+  // isMuted: boolean — mute уже применён к newTrack
 })
+
+camera.onSourceMuteChange(({ muted, track }) => { ... })       // track.muted сырого трека камеры
+camera.onTrackEnded(({ reason, deviceId, label }) => { ... })  // 'device-lost' | 'ended'
+camera.onDeviceFallback(({ requestedDeviceId, actualDeviceId, reason }) => { ... })
 
 unsub() // отписка
 ```
@@ -207,7 +219,8 @@ unsub() // отписка
 | `toggle()` | `Promise<void>` | Переключить состояние |
 | `reset()` | `Promise<void>` | Выключить камеру |
 | `destroy()` | `void` | Уничтожить контроллер |
-| `switchDevice(deviceId)` | `Promise<void>` | Переключить устройство и трек |
+| `switchDevice(deviceId, opts?)` | `Promise<SwitchResult>` | Переключить устройство и трек; `opts.force` переоткрывает то же устройство |
+| `reacquire()` | `Promise<SwitchResult>` | Переоткрыть текущую камеру |
 | `updateDevice(deviceId)` | `Promise<void>` | Обновить deviceId в конфигурации |
 | `toggleFacing()` | `Promise<void>` | Фронтальная / задняя камера |
 | `preview(deviceId?)` | `Promise<MediaStreamTrack>` | Создать превью-трек |
@@ -232,3 +245,6 @@ unsub() // отписка
 | `onStateChange(cb)` | `VoidFunction` | Подписка на `CameraState` |
 | `onError(cb)` | `VoidFunction` | Подписка на ошибки |
 | `onTrackReplaced(cb)` | `VoidFunction` | Подписка на замену трека |
+| `onSourceMuteChange(cb)` | `VoidFunction` | Источник заглушён/ожил (`track.muted`) |
+| `onTrackEnded(cb)` | `VoidFunction` | Трек завершился не по `disable()` |
+| `onDeviceFallback(cb)` | `VoidFunction` | Открыта системная камера вместо выбранной |

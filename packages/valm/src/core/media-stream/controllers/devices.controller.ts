@@ -1,16 +1,25 @@
 import { DevicesChangeCallback, DevicesState } from '../../types'
 import { PermissionsService } from '../../permissions'
-import { ActiveDeviceIds, DeviceDisconnectedCallback, DeviceDisconnectedEvent } from '../device.types'
+import { ActiveDeviceIds, DefaultDeviceChangedCallback, DefaultDeviceChangedEvent, DeviceDisconnectedCallback, DeviceDisconnectedEvent } from '../device.types'
+
+// Виртуальные записи enumerateDevices: не физические устройства
+const isVirtualDeviceId = (id: string) => id === 'default' || id === 'communications' || id === ''
+const sameDevice = (a: MediaDeviceInfo | null, b: MediaDeviceInfo | null) => a?.groupId === b?.groupId && a?.label === b?.label
 import { AudioOutputController } from './audio-output.controller'
 
 export class DevicesController {
   private callbacks = new Set<DevicesChangeCallback>()
   private disconnectedCallbacks = new Set<DeviceDisconnectedCallback>()
+  private defaultChangedCallbacks = new Set<DefaultDeviceChangedCallback>()
   private cachedDevices: DevicesState = {
     cameras: [],
     microphones: [],
     speakers: [],
+    defaults: { microphone: null, speaker: null, communicationsMicrophone: null },
   }
+  // Уже отправленные onDeviceDisconnected (`kind:deviceId`) — по одному событию на переход «есть → нет»
+  private reportedMissing = new Set<string>()
+  private hasSnapshot = false
   private deviceChangeListener: VoidFunction | null = null
   private audioOutputController?: AudioOutputController
   private hasAutoSelectedSpeaker = false
@@ -27,7 +36,10 @@ export class DevicesController {
   private setupDeviceChangeListener(): void {
     if (typeof window !== 'undefined' && navigator.mediaDevices) {
       this.deviceChangeListener = async () => {
+        const previousDefaults = this.hasSnapshot ? this.cachedDevices.defaults : null
         await this.getAvailable()
+        this.checkDeviceDisconnection()
+        if (previousDefaults) this.checkDefaultsChanged(previousDefaults)
         this._notifyChange(this.state)
       }
 
@@ -39,11 +51,19 @@ export class DevicesController {
     try {
       const devices = await navigator.mediaDevices.enumerateDevices()
 
+      const find = (kind: MediaDeviceKind, id: string) => devices.find((d) => d.kind === kind && d.deviceId === id) ?? null
+
       this.cachedDevices = {
         cameras: devices.filter((device) => device.kind === 'videoinput' && device.deviceId !== 'default' && device.deviceId !== ''),
         microphones: devices.filter((device) => device.kind === 'audioinput' && device.deviceId !== 'default' && device.deviceId !== ''),
         speakers: devices.filter((device) => device.kind === 'audiooutput' && device.deviceId !== 'default' && device.deviceId !== ''),
+        defaults: {
+          microphone: find('audioinput', 'default'),
+          speaker: find('audiooutput', 'default'),
+          communicationsMicrophone: find('audioinput', 'communications'),
+        },
       }
+      this.hasSnapshot = true
 
       // Обновляем список доступных устройств в AudioOutputController
       if (this.audioOutputController) {
@@ -58,8 +78,6 @@ export class DevicesController {
         }
       }
 
-      this.checkDeviceDisconnection()
-
       return this.cachedDevices
     } catch (error) {
       console.error('[DevicesController] Failed to get device list:', error)
@@ -67,24 +85,43 @@ export class DevicesController {
     }
   }
 
+  // Только из devicechange. active — последнее открытое устройство (переживает 'ended'),
+  // поэтому событие приходит при любом порядке ended/devicechange. Виртуальный 'default' не проверяется:
+  // его смену сообщает onDefaultDeviceChanged
   private checkDeviceDisconnection(): void {
-    if (!this.getActiveDeviceIds || this.disconnectedCallbacks.size === 0) return
+    if (!this.getActiveDeviceIds) return
 
     const active = this.getActiveDeviceIds()
+    this.checkMissing('camera', active.camera, this.cachedDevices.cameras)
+    this.checkMissing('microphone', active.microphone, this.cachedDevices.microphones)
+  }
 
-    if (active.camera) {
-      const cameraExists = this.cachedDevices.cameras.some((d) => d.deviceId === active.camera)
-      if (!cameraExists) {
-        this.notifyDeviceDisconnected({ kind: 'camera', deviceId: active.camera })
-      }
+  private checkMissing(kind: DeviceDisconnectedEvent['kind'], deviceId: string | null, list: MediaDeviceInfo[]): void {
+    if (!deviceId || isVirtualDeviceId(deviceId)) return
+
+    const key = `${kind}:${deviceId}`
+    if (list.some((d) => d.deviceId === deviceId)) {
+      this.reportedMissing.delete(key)
+      return
+    }
+    if (this.reportedMissing.has(key)) return
+
+    this.reportedMissing.add(key)
+    this.notifyDeviceDisconnected({ kind, deviceId })
+  }
+
+  private checkDefaultsChanged(previous: DevicesState['defaults']): void {
+    const current = this.cachedDevices.defaults
+    const changes: DefaultDeviceChangedEvent[] = []
+
+    if (!sameDevice(previous.microphone, current.microphone)) {
+      changes.push({ kind: 'microphone', previous: previous.microphone, current: current.microphone })
+    }
+    if (!sameDevice(previous.speaker, current.speaker)) {
+      changes.push({ kind: 'speaker', previous: previous.speaker, current: current.speaker })
     }
 
-    if (active.microphone) {
-      const micExists = this.cachedDevices.microphones.some((d) => d.deviceId === active.microphone)
-      if (!micExists) {
-        this.notifyDeviceDisconnected({ kind: 'microphone', deviceId: active.microphone })
-      }
-    }
+    changes.forEach((event) => this.defaultChangedCallbacks.forEach((cb) => cb(event)))
   }
 
   private notifyDeviceDisconnected(event: DeviceDisconnectedEvent): void {
@@ -130,6 +167,12 @@ export class DevicesController {
     return () => this.disconnectedCallbacks.delete(callback)
   }
 
+  // ОС сменила системное устройство (запись 'default' указывает на другое физическое устройство)
+  onDefaultDeviceChanged = (callback: DefaultDeviceChangedCallback): VoidFunction => {
+    this.defaultChangedCallbacks.add(callback)
+    return () => this.defaultChangedCallbacks.delete(callback)
+  }
+
   _notifyChange(devices: DevicesState): void {
     this.cachedDevices = devices
     this.callbacks.forEach((callback) => callback(devices))
@@ -150,6 +193,8 @@ export class DevicesController {
     }
     this.callbacks.clear()
     this.disconnectedCallbacks.clear()
+    this.defaultChangedCallbacks.clear()
+    this.reportedMissing.clear()
     this.hasAutoSelectedSpeaker = false
   }
 }

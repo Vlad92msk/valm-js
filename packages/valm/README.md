@@ -81,10 +81,9 @@ const mic = media.microphoneController
 
 await mic.enable()
 mic.disable()
-mic.mute()    // soft mute — keeps the track alive
-mic.unmute()
+await mic.toggleMute()   // soft mute — keeps the track alive
 
-await mic.switchDevice(deviceId)
+await mic.switchDevice(deviceId)   // resolves after the track is replaced, rejects on failure
 
 mic.onStateChange((state) => {
   // state.isEnabled, state.isMuted, state.isSpeaking, state.volume
@@ -321,6 +320,21 @@ media.configurationController.updateRecordingConfig({ quality: 'high' })
 const json = media.configurationController.exportConfig()
 media.configurationController.importConfig(json)
 ```
+
+## SFU integration (mediasoup, LiveKit, …)
+
+Publish the track Valm gives you and replace it on the sender whenever Valm replaces it:
+
+```typescript
+const producer = await transport.produce({ track: media.microphoneController.getTrack()! })
+
+media.microphoneController.onTrackReplaced(({ newTrack }) => producer.replaceTrack({ track: newTrack }))
+media.cameraController.onTrackReplaced(({ newTrack }) => cameraProducer.replaceTrack({ track: newTrack }))
+```
+
+- **Soft mute and mediasoup.** `Producer.replaceTrack` with `disableTrackOnPause: true` (the default) sets `track.enabled = !producer.paused`, which overrides Valm's soft mute on the new track. Either pause the producer together with `toggleMute()` (`producer.pause()` / `resume()`), or create the producer with `disableTrackOnPause: false`. `onTrackReplaced` passes `isMuted` so you can keep them in sync.
+- **Track replacement happens not only on `switchDevice`:** enabling gain/visualisation/audio effects, turning video effects on and off (`source: 'background'`), `reacquire()` and automatic fallbacks (`deviceFallback`, `followSystemDefault`) also replace the track. Always handle `onTrackReplaced`.
+- **Device loss.** When the active device disappears, the track ends: `onTrackEnded({ reason: 'device-lost' })` and `onStateChange({ isEnabled: false })`. With `deviceFallback: 'default'` Valm then reopens the system device as a new track (not a replacement): pick it up from `onStateChange` / `getTrack()` and `replaceTrack` it on the producer.
 
 ## Permissions
 

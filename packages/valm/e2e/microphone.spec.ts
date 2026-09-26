@@ -130,3 +130,45 @@ test('preview() создаёт отдельный аудио-трек, publishPr
   expect(mainId).toBe(previewId)
   expect((await getState(page)).microphone.isPreviewing).toBe(false)
 })
+
+// gUM-мок: 'bad' → NotReadableError, любой другой id открывает дефолтное устройство
+async function mockDeviceIds(page: any) {
+  await page.evaluate(() => {
+    const orig = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices)
+    navigator.mediaDevices.getUserMedia = async (c: any) => {
+      const id = c?.audio?.deviceId?.exact ?? c?.video?.deviceId?.exact
+      if (id === 'bad') throw new DOMException('busy', 'NotReadableError')
+      const strip = (x: any) => (x && typeof x === 'object' ? { ...x, deviceId: undefined } : x)
+      return orig({ audio: strip(c?.audio), video: strip(c?.video) })
+    }
+  })
+}
+
+test('switchDevice() сохраняет mute: новый трек не передаёт звук', async ({ page }) => {
+  await mockDeviceIds(page)
+  const r = await page.evaluate(async () => {
+    const mic = window.__valm.microphoneController
+    await mic.enable()
+    const before = mic.getTrack()
+    await mic.toggleMute()
+    await mic.switchDevice('other')
+    const t = mic.getTrack()
+    return { replaced: t !== before, enabled: t?.enabled, isMuted: mic.state.isMuted }
+  })
+  expect(r).toEqual({ replaced: true, enabled: false, isMuted: true })
+})
+
+test('switchDevice() бросает ошибку и откатывает deviceId; enable() после этого работает', async ({ page }) => {
+  await mockDeviceIds(page)
+  const r = await page.evaluate(async () => {
+    const mic = window.__valm.microphoneController
+    await mic.enable('good')
+    const before = mic.getTrack()
+    const err = await mic.switchDevice('bad').then(() => null, (e: any) => e.name)
+    const alive = before?.readyState
+    await mic.disable()
+    await mic.enable()
+    return { err, alive, deviceId: mic.getConfiguration().deviceId, enabled: mic.state.isEnabled }
+  })
+  expect(r).toEqual({ err: 'NotReadableError', alive: 'live', deviceId: 'good', enabled: true })
+})

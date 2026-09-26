@@ -2,7 +2,8 @@ import { AudioConfiguration, VideoConfiguration } from '../configuration/configu
 import { isIOS } from '../utils'
 
 export class ConstraintsBuilderService {
-  // Строит constraints для видео. На iOS — упрощённые (ideal вместо exact)
+  // Строит constraints для видео. На iOS — упрощённые (ideal для разрешения/fps; deviceId всегда exact,
+  // отсутствующее устройство обрабатывает deviceFallback)
   static buildVideoConstraints(config: VideoConfiguration): MediaTrackConstraints {
     if (isIOS()) {
       return this.buildIOSVideoConstraints(config)
@@ -21,7 +22,7 @@ export class ConstraintsBuilderService {
     }
   }
 
-  // iOS Safari: ideal вместо exact, deviceId ИЛИ facingMode (не оба)
+  // iOS Safari: ideal для разрешения/fps, deviceId (exact) ИЛИ facingMode (не оба)
   private static buildIOSVideoConstraints(config: VideoConfiguration): MediaTrackConstraints {
     const constraints: MediaTrackConstraints = {}
 

@@ -3,6 +3,9 @@ import { TypedEventEmitter } from '../utils'
 import { VoiceActivityDetector, VoiceActivityDetectorFactory } from '../utils'
 import { AudioProcessingPipelineService } from './audio-processing-pipeline.service'
 import { ConstraintsBuilderService } from './constraints-builder.service'
+import { getUserMediaWithFallback } from './device-fallback.helper'
+import { DeviceFallbackEvent } from './device.types'
+import { SwitchOutcome, TrackDeviceInfo, describeTrackDevice, runExclusiveOperation, SourceMuteReporter, ExclusiveState } from './track-manager.shared'
 
 export enum AudioTrackEvents {
   TRACK_ADDED = 'trackAdded',
@@ -12,6 +15,9 @@ export enum AudioTrackEvents {
   TRACK_UNMUTED = 'trackUnmuted',
   STATE_CHANGED = 'stateChanged',
   VOLUME_CHANGE = 'volumeChange',
+  SOURCE_MUTE_CHANGED = 'sourceMuteChanged',
+  TRACK_ENDED = 'trackEnded',
+  DEVICE_FALLBACK = 'deviceFallback',
   ERROR = 'error',
 }
 
@@ -19,6 +25,7 @@ export interface AudioTrackState {
   track: MediaStreamTrack | null
   isEnabled: boolean
   isMuted: boolean
+  isSourceMuted: boolean
   isSpeaking: boolean
   volume: number
   deviceId: string | null
@@ -43,6 +50,9 @@ interface AudioTrackEventMap {
   [AudioTrackEvents.TRACK_UNMUTED]: (payload: AudioTrackEventPayload) => void
   [AudioTrackEvents.STATE_CHANGED]: (state: AudioTrackState) => void
   [AudioTrackEvents.VOLUME_CHANGE]: (payload: VolumeChangePayload) => void
+  [AudioTrackEvents.SOURCE_MUTE_CHANGED]: (payload: { muted: boolean; track: MediaStreamTrack }) => void
+  [AudioTrackEvents.TRACK_ENDED]: (device: TrackDeviceInfo) => void
+  [AudioTrackEvents.DEVICE_FALLBACK]: (event: DeviceFallbackEvent) => void
   [AudioTrackEvents.ERROR]: (error: Error) => void
 }
 
@@ -59,8 +69,21 @@ export class AudioTrackManagerService extends TypedEventEmitter<AudioTrackEventM
   private pipeline = new AudioProcessingPipelineService()
   private pipelineEngaged = false
 
-  private pendingSwitch: Promise<void> | null = null
-  private abortController: AbortController | null = null
+  private exclusive: ExclusiveState = { pending: null, abortController: null }
+
+  private detachTrackListeners: VoidFunction | null = null
+  private sourceMute = new SourceMuteReporter(
+    () => this.getConfig().sourceMuteDebounceMs ?? 0,
+    (muted) => {
+      const track = this.getOutputTrack()
+      if (track) this.emit(AudioTrackEvents.SOURCE_MUTE_CHANGED, { muted, track })
+      this.emitStateIfChanged()
+    },
+  )
+  // Последнее открытое устройство; переживает 'ended' (для проверки отключения), сбрасывается в disable()
+  private lastDevice: TrackDeviceInfo | null = null
+  // Запрошенный deviceId, вместо которого открыт системный (deviceFallback: 'default')
+  private fallbackFrom: string | null = null
 
   private lastEmittedState: AudioTrackState | null = null
 
@@ -78,6 +101,14 @@ export class AudioTrackManagerService extends TypedEventEmitter<AudioTrackEventM
   // Оригинальный трек микрофона (без обработки графом)
   getRawTrack(): MediaStreamTrack | null {
     return this.track
+  }
+
+  getLastDevice(): TrackDeviceInfo | null {
+    return this.lastDevice
+  }
+
+  getFallbackFrom(): string | null {
+    return this.fallbackFrom
   }
 
   // Обработанный трек, если граф активен, иначе оригинальный
@@ -134,6 +165,7 @@ export class AudioTrackManagerService extends TypedEventEmitter<AudioTrackEventM
         }
 
         this.isEnabled = true
+        return 'replaced'
       })
 
       return this.getOutputTrack()
@@ -147,17 +179,16 @@ export class AudioTrackManagerService extends TypedEventEmitter<AudioTrackEventM
   async enableWithTrack(track: MediaStreamTrack): Promise<MediaStreamTrack | null> {
     try {
       // Отменяем in-flight acquire/switch, иначе он позже перезапишет externalTrack
-      this.abortController?.abort()
+      this.exclusive.abortController?.abort()
 
       if (this.track) {
         this.disable()
       }
 
-      this.track = track
+      this.setTrack(track)
+      this.fallbackFrom = null
       this.isEnabled = true
       this.isMuted = false
-
-      track.addEventListener('ended', () => this.handleTrackEnded(track))
 
       this.initVAD(track)
       await this.startPipelineIfEngaged()
@@ -174,13 +205,15 @@ export class AudioTrackManagerService extends TypedEventEmitter<AudioTrackEventM
   // Выключить аудио и освободить трек
   disable(): void {
     // Отменяем in-flight acquire/switch, чтобы он не «воскресил» трек после выключения
-    this.abortController?.abort()
+    this.exclusive.abortController?.abort()
+    this.lastDevice = null
 
     if (this.track) {
       const removedTrack = this.getOutputTrack()!
 
       this.destroyVAD()
       this.pipeline.stop()
+      this.detachListeners()
       this.track.stop()
       this.track = null
       this.isEnabled = false
@@ -216,70 +249,33 @@ export class AudioTrackManagerService extends TypedEventEmitter<AudioTrackEventM
     }
   }
 
-  // Переключить микрофон на другое устройство
-  async switchDevice(deviceId?: string): Promise<void> {
-    await this.runExclusive(async (abortController) => {
+  // Переключить микрофон на другое устройство.
+  // force — переоткрыть даже тот же deviceId (например, 'default' после смены системного входа)
+  async switchDevice(deviceId?: string, options?: { force?: boolean }): Promise<SwitchOutcome> {
+    return this.runExclusive(async (abortController) => {
       // Проверяем нужно ли переключать
       const currentDeviceId = this.track?.getSettings().deviceId
       const targetDeviceId = deviceId ?? this.getConfig().deviceId
 
-      if (currentDeviceId && targetDeviceId && currentDeviceId === targetDeviceId && this.isTrackActive()) {
-        return
+      if (!options?.force && currentDeviceId && targetDeviceId && currentDeviceId === targetDeviceId && this.isTrackActive()) {
+        return 'noop'
       }
 
       if (this.isTrackActive()) {
         await this.replaceTrack(abortController, deviceId)
-      } else if (this.isEnabled) {
-        await this.acquireTrack(abortController, deviceId)
+        return 'replaced'
       }
+      if (this.isEnabled) {
+        await this.acquireTrack(abortController, deviceId)
+        return 'replaced'
+      }
+      return 'disabled'
     })
   }
 
-  // Сериализует мутирующие операции над треком (enable / switchDevice): отменяет
-  // предыдущую in-flight операцию и ждёт её завершения, затем выполняет свою под
-  // собственным AbortController. Отменённые операции (AbortError) завершаются тихо —
-  // без ERROR-события и без осевших живых треков.
-  private async runExclusive(operation: (abortController: AbortController) => Promise<void>): Promise<void> {
-    // Захватываем предыдущую операцию и отменяем её — синхронно, чтобы конкурентные
-    // вызовы выстроились в корректную цепочку (каждый отменяет ровно предшественника)
-    const previous = this.pendingSwitch
-    this.abortController?.abort()
-
-    const currentAbortController = new AbortController()
-    this.abortController = currentAbortController
-
-    const operationPromise = (async () => {
-      // Ждём завершения предыдущей операции (её ошибку обрабатывает её собственный вызов)
-      if (previous) {
-        await previous.catch(() => {})
-      }
-
-      try {
-        await operation(currentAbortController)
-      } catch (error) {
-        // Отменённую операцию не считаем ошибкой — её вытеснила более новая
-        if (error instanceof DOMException && error.name === 'AbortError') {
-          return
-        }
-        throw error
-      } finally {
-        if (this.abortController === currentAbortController) {
-          this.abortController = null
-        }
-      }
-
-      this.emitStateIfChanged()
-    })()
-
-    this.pendingSwitch = operationPromise
-
-    try {
-      await operationPromise
-    } finally {
-      if (this.pendingSwitch === operationPromise) {
-        this.pendingSwitch = null
-      }
-    }
+  // Сериализует мутирующие операции над треком (enable / switchDevice); вытесненная операция → 'superseded'
+  private runExclusive(operation: (abortController: AbortController) => Promise<SwitchOutcome>): Promise<SwitchOutcome> {
+    return runExclusiveOperation(this.exclusive, operation, () => this.emitStateIfChanged())
   }
 
   getTrack(): MediaStreamTrack | null {
@@ -292,6 +288,7 @@ export class AudioTrackManagerService extends TypedEventEmitter<AudioTrackEventM
       track: this.getOutputTrack(),
       isEnabled: this.isEnabled,
       isMuted: this.isMuted,
+      isSourceMuted: this.sourceMute.isMuted,
       isSpeaking: this.isSpeaking,
       volume: this.volume,
       deviceId: this.track?.getSettings().deviceId ?? null,
@@ -301,9 +298,9 @@ export class AudioTrackManagerService extends TypedEventEmitter<AudioTrackEventM
 
   // Уничтожить менеджер и освободить ресурсы
   destroy(): void {
-    if (this.abortController) {
-      this.abortController.abort()
-      this.abortController = null
+    if (this.exclusive.abortController) {
+      this.exclusive.abortController.abort()
+      this.exclusive.abortController = null
     }
 
     this.destroyVAD()
@@ -319,105 +316,113 @@ export class AudioTrackManagerService extends TypedEventEmitter<AudioTrackEventM
     }
   }
 
-  private async acquireTrack(abortController?: AbortController, deviceId?: string): Promise<void> {
-    let tempStream: MediaStream | null = null
+  // gUM с учётом deviceFallback; отменённая операция не оставляет живых треков
+  private async openTrack(abortController?: AbortController, deviceId?: string): Promise<MediaStreamTrack> {
+    const config = this.getConfig()
+    const effectiveConfig = deviceId ? { ...config, deviceId } : config
+    const constraints = ConstraintsBuilderService.buildAudioConstraints(effectiveConfig)
 
-    try {
-      const config = this.getConfig()
-      const effectiveConfig = deviceId ? { ...config, deviceId } : config
-      const constraints = ConstraintsBuilderService.buildAudioConstraints(effectiveConfig)
-
-      if (abortController?.signal.aborted) {
-        throw new DOMException('Operation aborted', 'AbortError')
-      }
-
-      tempStream = await navigator.mediaDevices.getUserMedia({ audio: constraints })
-
-      if (abortController?.signal.aborted) {
-        tempStream.getTracks().forEach((t) => t.stop())
-        throw new DOMException('Operation aborted', 'AbortError')
-      }
-
-      const newTrack = tempStream.getAudioTracks()[0]
-      this.track = newTrack
-      this.isEnabled = true
-      this.isMuted = false
-
-      newTrack.addEventListener('ended', () => this.handleTrackEnded(newTrack))
-
-      this.initVAD(newTrack)
-      await this.startPipelineIfEngaged()
-
-      this.emit(AudioTrackEvents.TRACK_ADDED, { track: this.getOutputTrack()! })
-    } catch (error) {
-      if (tempStream) {
-        tempStream.getTracks().forEach((t) => t.stop())
-      }
-
-      if (error instanceof DOMException && error.name === 'AbortError') {
-        throw error
-      }
-
-      throw error
+    if (abortController?.signal.aborted) {
+      throw new DOMException('Operation aborted', 'AbortError')
     }
+
+    const { stream, fallback } = await getUserMediaWithFallback('audio', constraints, effectiveConfig.deviceId, config.deviceFallback)
+
+    if (abortController?.signal.aborted) {
+      stream.getTracks().forEach((t) => t.stop())
+      throw new DOMException('Operation aborted', 'AbortError')
+    }
+
+    this.fallbackFrom = fallback ? fallback.requestedDeviceId : null
+    if (fallback) this.emit(AudioTrackEvents.DEVICE_FALLBACK, fallback)
+
+    return stream.getAudioTracks()[0]
+  }
+
+  private async acquireTrack(abortController?: AbortController, deviceId?: string): Promise<void> {
+    const newTrack = await this.openTrack(abortController, deviceId)
+
+    this.setTrack(newTrack)
+    this.isEnabled = true
+    this.isMuted = false
+
+    this.initVAD(newTrack)
+    await this.startPipelineIfEngaged()
+
+    this.emit(AudioTrackEvents.TRACK_ADDED, { track: this.getOutputTrack()! })
   }
 
   private async replaceTrack(abortController?: AbortController, deviceId?: string): Promise<void> {
-    let tempStream: MediaStream | null = null
+    const oldTrack = this.track
+    const oldOutputTrack = this.getOutputTrack()
 
-    try {
-      const oldTrack = this.track
-      const oldOutputTrack = this.getOutputTrack()
-      const config = this.getConfig()
-      const effectiveConfig = deviceId ? { ...config, deviceId } : config
-      const constraints = ConstraintsBuilderService.buildAudioConstraints(effectiveConfig)
+    // Сначала gUM: при ошибке старый трек и граф не тронуты
+    const newTrack = await this.openTrack(abortController, deviceId)
 
-      if (abortController?.signal.aborted) {
-        throw new DOMException('Operation aborted', 'AbortError')
-      }
+    // mute переживает смену устройства: новый трек не должен передавать звук до unmute()
+    const wasMuted = this.isMuted
+    newTrack.enabled = !wasMuted
 
-      tempStream = await navigator.mediaDevices.getUserMedia({ audio: constraints })
+    // Останавливаем VAD и граф (он привязан к старому треку) перед заменой
+    this.destroyVAD()
+    this.pipeline.stop()
 
-      if (abortController?.signal.aborted) {
-        tempStream.getTracks().forEach((t) => t.stop())
-        throw new DOMException('Operation aborted', 'AbortError')
-      }
-
-      const newTrack = tempStream.getAudioTracks()[0]
-
-      // Останавливаем VAD и граф (он привязан к старому треку) перед заменой
-      this.destroyVAD()
-      this.pipeline.stop()
-
-      if (oldTrack) {
-        oldTrack.stop()
-      }
-
-      this.track = newTrack
-      newTrack.addEventListener('ended', () => this.handleTrackEnded(newTrack))
-
-      // Запускаем VAD и граф для нового трека
-      this.initVAD(newTrack)
-      await this.startPipelineIfEngaged()
-
-      const newOutputTrack = this.getOutputTrack()!
-
-      if (oldOutputTrack) {
-        this.emit(AudioTrackEvents.TRACK_REPLACED, { track: newOutputTrack, oldTrack: oldOutputTrack })
-      } else {
-        this.emit(AudioTrackEvents.TRACK_ADDED, { track: newOutputTrack })
-      }
-    } catch (error) {
-      if (tempStream) {
-        tempStream.getTracks().forEach((t) => t.stop())
-      }
-
-      if (error instanceof DOMException && error.name === 'AbortError') {
-        throw error
-      }
-
-      throw error
+    if (oldTrack) {
+      this.detachListeners()
+      oldTrack.stop()
     }
+
+    this.setTrack(newTrack)
+
+    // Запускаем VAD и граф для нового трека (при mute VAD не работает, как в mute())
+    if (!wasMuted) this.initVAD(newTrack)
+    try {
+      await this.startPipelineIfEngaged()
+    } catch (pipelineError) {
+      // Граф не поднялся: отдаём сырой трек, но сообщаем об ошибке
+      this.pipeline.stop()
+      this.emit(AudioTrackEvents.ERROR, pipelineError instanceof Error ? pipelineError : new Error(String(pipelineError)))
+    }
+
+    const newOutputTrack = this.getOutputTrack()!
+
+    if (oldOutputTrack) {
+      this.emit(AudioTrackEvents.TRACK_REPLACED, { track: newOutputTrack, oldTrack: oldOutputTrack })
+    } else {
+      this.emit(AudioTrackEvents.TRACK_ADDED, { track: newOutputTrack })
+    }
+  }
+
+  // Единая точка подписки на ended/mute/unmute сырого трека (выход графа их не получает)
+  private setTrack(track: MediaStreamTrack): void {
+    this.detachListeners()
+    this.track = track
+    this.lastDevice = describeTrackDevice(track)
+
+    const onEnded = () => this.handleTrackEnded(track)
+    const onMute = () => this.handleSourceMute(track, true)
+    const onUnmute = () => this.handleSourceMute(track, false)
+    track.addEventListener('ended', onEnded)
+    track.addEventListener('mute', onMute)
+    track.addEventListener('unmute', onUnmute)
+
+    this.detachTrackListeners = () => {
+      track.removeEventListener('ended', onEnded)
+      track.removeEventListener('mute', onMute)
+      track.removeEventListener('unmute', onUnmute)
+    }
+    if (track.muted) this.sourceMute.update(true)
+  }
+
+  private detachListeners(): void {
+    this.detachTrackListeners?.()
+    this.detachTrackListeners = null
+    this.sourceMute.reset()
+  }
+
+  private handleSourceMute(track: MediaStreamTrack, muted: boolean): void {
+    if (this.track !== track) return
+    this.sourceMute.update(muted)
   }
 
   private initVAD(track: MediaStreamTrack): void {
@@ -458,19 +463,21 @@ export class AudioTrackManagerService extends TypedEventEmitter<AudioTrackEventM
     } as VolumeChangePayload)
   }
 
-  // Микрофон отключён или трек завершился
+  // Микрофон отключён или трек завершился (не disable): lastDevice сохраняется
   private handleTrackEnded(track: MediaStreamTrack): void {
     if (this.track === track) {
       const removedTrack = this.getOutputTrack()!
 
       this.destroyVAD()
       this.pipeline.stop()
+      this.detachListeners()
       this.track = null
       this.isEnabled = false
       this.isMuted = false
 
       this.emit(AudioTrackEvents.TRACK_REMOVED, { track: removedTrack })
       this.emitStateIfChanged()
+      if (this.lastDevice) this.emit(AudioTrackEvents.TRACK_ENDED, this.lastDevice)
     }
   }
 
@@ -485,6 +492,7 @@ export class AudioTrackManagerService extends TypedEventEmitter<AudioTrackEventM
       !this.lastEmittedState ||
       this.lastEmittedState.isEnabled !== currentState.isEnabled ||
       this.lastEmittedState.isMuted !== currentState.isMuted ||
+      this.lastEmittedState.isSourceMuted !== currentState.isSourceMuted ||
       this.lastEmittedState.isSpeaking !== currentState.isSpeaking ||
       this.lastEmittedState.volume !== currentState.volume ||
       this.lastEmittedState.deviceId !== currentState.deviceId ||

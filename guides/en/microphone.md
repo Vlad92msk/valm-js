@@ -34,9 +34,14 @@ await mic.toggleMute()   // mute ↔ unmute (the track stays, but track.enabled 
 ### Switching devices
 
 ```typescript
-await mic.switchDevice(deviceId)    // update deviceId in the configuration
-await mic.updateDevice(deviceId)    // same thing — an alias
+const result = await mic.switchDevice(deviceId)  // resolves after the track has actually been replaced
+// result: { applied: boolean, deviceId, reason?: 'noop' | 'superseded' | 'disabled' }
+await mic.switchDevice(null)                     // system default microphone
+await mic.reacquire()                            // reopen the current device (e.g. 'default' after the OS switched input)
+await mic.updateDevice(deviceId)                 // only updates the configuration, errors go to onError
 ```
+
+`switchDevice` rejects if the new device could not be opened; in that case the previous track keeps working and `deviceId` in the configuration is rolled back. Soft mute survives the switch. When the microphone is off, only the configuration is updated (`reason: 'disabled'`). A call superseded by a newer `switchDevice` resolves with `reason: 'superseded'`.
 
 ### Audio processing
 
@@ -86,6 +91,8 @@ interface MicrophoneState {
   settings: MediaTrackSettings | null  // settings of the active track
   volume: number                       // current volume level (0–100)
   isSpeaking: boolean                  // whether the user is speaking
+  isSourceMuted: boolean               // the source delivers no audio (track.muted: BT profile switch,
+                                       // system mute) — unlike isMuted, not controlled by Valm
 }
 ```
 
@@ -101,8 +108,13 @@ interface AudioConfiguration {
   enableSpeakingDetection: boolean
   volumeThreshold: number              // speech-detection threshold (0–100)
   constraints: MediaTrackConstraints
+  deviceFallback?: 'none' | 'default'  // chosen mic is missing: 'none' — error (default), 'default' — open the system one
+  followSystemDefault?: boolean        // in "Default" mode, reopen the track when the OS switches the system input
+  sourceMuteDebounceMs?: number        // delay before onSourceMuteChange({ muted: true }); short blips are not reported (default 0)
 }
 ```
+
+With `deviceFallback: 'default'` the chosen `deviceId` stays in the configuration: Valm switches back to it once it is plugged in again. If the active microphone disappears while in use, Valm reopens the system one (`onDeviceFallback` with `reason: 'device-lost'`).
 
 ---
 
@@ -124,10 +136,20 @@ mic.onError((error: MediaErrorEvent) => {
   // error.error: unknown
 })
 
-mic.onTrackReplaced(({ oldTrack, newTrack }) => {
+mic.onTrackReplaced(({ oldTrack, newTrack, isMuted }) => {
   // oldTrack: MediaStreamTrack
   // newTrack: MediaStreamTrack
+  // isMuted: boolean — soft mute is already applied to newTrack
 })
+
+// The source stopped/started delivering audio (works with the audio graph enabled too)
+mic.onSourceMuteChange(({ muted, track }) => showWarning(muted ? 'Microphone is silent' : null))
+
+// The track ended not by disable(): reason 'device-lost' | 'ended'
+mic.onTrackEnded(({ reason, deviceId, label }) => { ... })
+
+// Chosen microphone is missing, the system one was opened (deviceFallback: 'default')
+mic.onDeviceFallback(({ requestedDeviceId, actualDeviceId, reason }) => { ... })
 
 unsub() // unsubscribe
 ```
@@ -206,7 +228,8 @@ await mic.publishPreview();
 | `toggleMute()` | `Promise<void>` | Soft mute/unmute |
 | `reset()` | `Promise<void>` | Disable (if it was on) |
 | `destroy()` | `void` | Destroy the controller |
-| `switchDevice(deviceId)` | `Promise<void>` | Update the device in the configuration |
+| `switchDevice(deviceId, opts?)` | `Promise<SwitchResult>` | Switch the device and wait for the new track; `opts.force` reopens the same device |
+| `reacquire()` | `Promise<SwitchResult>` | Reopen the current device |
 | `updateDevice(deviceId)` | `Promise<void>` | Update the device in the configuration |
 | `updateAudioProcessing(opts)` | `Promise<void>` | Configure audio processing |
 | `updateVolumeThreshold(n)` | `void` | Speech-detection threshold (0–100) |
@@ -226,3 +249,6 @@ await mic.publishPreview();
 | `onVolumeChange(cb)` | `VoidFunction` | Subscribe to the volume level |
 | `onError(cb)` | `VoidFunction` | Subscribe to errors |
 | `onTrackReplaced(cb)` | `VoidFunction` | Subscribe to track replacement |
+| `onSourceMuteChange(cb)` | `VoidFunction` | Source muted/unmuted (`track.muted`) |
+| `onTrackEnded(cb)` | `VoidFunction` | Track ended not by `disable()` |
+| `onDeviceFallback(cb)` | `VoidFunction` | System device opened instead of the chosen one |

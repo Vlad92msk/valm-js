@@ -28,8 +28,16 @@ interface DevicesState {
   cameras: MediaDeviceInfo[]      // видеоустройства
   microphones: MediaDeviceInfo[]  // аудиовходы
   speakers: MediaDeviceInfo[]     // аудиовыходы
+  // Виртуальные записи 'default' (Chrome); в массивах выше их нет
+  defaults: {
+    microphone: MediaDeviceInfo | null           // «По умолчанию — <устройство>»
+    speaker: MediaDeviceInfo | null
+    communicationsMicrophone: MediaDeviceInfo | null  // 'communications' (Windows)
+  }
 }
 ```
+
+`defaults.microphone.label` удобно показывать в селекторе как пункт «По умолчанию — AirPods».
 
 `MediaDeviceInfo` — стандартный браузерный тип: `deviceId`, `label`, `kind`, `groupId`.
 
@@ -67,6 +75,11 @@ devices.onDeviceDisconnected(({ kind, deviceId }: DeviceDisconnectedEvent) => {
   console.warn(`${kind} disconnected: ${deviceId}`);
 });
 
+// ОС сменила системный вход/выход (например, подключили AirPods)
+devices.onDefaultDeviceChanged(({ kind, previous, current }: DefaultDeviceChangedEvent) => {
+  console.log(`${kind}: ${previous?.label} → ${current?.label}`);
+});
+
 unsub();
 ```
 
@@ -79,7 +92,7 @@ interface DeviceDisconnectedEvent {
 }
 ```
 
-Событие генерируется только для активных устройств — тех, что в данный момент используются камерой или микрофоном.
+Событие приходит только на `devicechange` для устройства, которое последним открывали камера или микрофон, в том числе если его трек уже завершился. Один раз на переход «есть → нет». Виртуальный `'default'` не проверяется: о его смене сообщает `onDefaultDeviceChanged` (а микрофон может следовать за ней сам при `audio.followSystemDefault: true`). Вызов `getAvailable()` событие не генерирует.
 
 ---
 
@@ -98,9 +111,15 @@ const audioOutput = media.audioOutputController;
 ```typescript
 // Проверить поддержку
 if (audioOutput.isOutputSelectionSupported()) {
-  await audioOutput.setOutputDevice('speaker-device-id');
+  const applied = await audioOutput.setOutputDevice('speaker-device-id');
+  if (!applied) showError('Динамик недоступен'); // подробности в onError
 }
+
+// Системный вывод: null или 'default' (в setSinkId уходит '' — работает и в Firefox/Safari)
+await audioOutput.setOutputDevice(null);
 ```
+
+`setOutputDevice` возвращает `false` и не меняет состояние, если id неизвестен (при пустом списке он тихо запрашивается) или `setSinkId` отказал у всех зарегистрированных элементов.
 
 ### Регистрация аудио-элементов
 
@@ -141,13 +160,20 @@ const success = await audioOutput.autoSelectSpeakerphone();
 audioOutput.onChange((state: AudioOutputState) => {
   console.log('Output device:', state.deviceId);
 });
+
+audioOutput.onError(({ action, deviceId, error }) => { /* setOutputDevice / registerAudioElement */ });
+
+// Выбранный вывод пропал: звук идёт в системный, пока устройство не вернётся
+audioOutput.onDeviceLost(({ deviceId }) => { /* state.isFallback === true */ });
 ```
 
 ### `AudioOutputState`
 
 ```typescript
 interface AudioOutputState {
-  deviceId: string  // ID выбранного устройства вывода или 'default'
+  deviceId: string                 // фактически применённый вывод или 'default'
+  preferredDeviceId: string | null // выбор пользователя (сохраняется, пока устройство отключено)
+  isFallback: boolean              // выбранный вывод пропал, звук идёт в системный
 }
 ```
 
@@ -167,8 +193,14 @@ cameras.forEach(d => cameraSelect.add(new Option(d.label, d.deviceId)));
 microphones.forEach(d => micSelect.add(new Option(d.label, d.deviceId)));
 speakers.forEach(d => speakerSelect.add(new Option(d.label, d.deviceId)));
 
-// Переключение камеры
-cameraSelect.onchange = () => media.cameraController.switchDevice(cameraSelect.value);
+// Переключение камеры: промис резолвится после реальной замены трека, при ошибке — reject
+cameraSelect.onchange = async () => {
+  try {
+    await media.cameraController.switchDevice(cameraSelect.value);
+  } catch (e) {
+    cameraSelect.value = media.cameraController.getConfiguration().deviceId ?? ''; // конфиг откатан
+  }
+};
 
 // Переключение микрофона
 micSelect.onchange = () => media.microphoneController.switchDevice(micSelect.value);
@@ -191,6 +223,16 @@ devices.onDeviceDisconnected(({ kind, deviceId }) => {
     media.cameraController.switchDevice(devices.state.cameras[0].deviceId);
   }
 });
+
+// Или доверить это Valm: открыть системное устройство, если выбранного нет,
+// и вернуться на него, когда его снова подключат
+const media = new Valm({
+  audio: { deviceFallback: 'default' },
+  video: { deviceFallback: 'default' },
+});
+media.microphoneController.onDeviceFallback(({ requestedDeviceId, actualDeviceId, reason }) => {
+  showNotification('Выбранный микрофон недоступен, используется микрофон по умолчанию');
+});
 ```
 
 ## API — DevicesController
@@ -202,16 +244,19 @@ devices.onDeviceDisconnected(({ kind, deviceId }) => {
 | `getCurrentAudioOutput(el)` | `string` | sinkId аудио-элемента или `'default'` |
 | `onChange(cb)` | `VoidFunction` | Подписка на изменение списка |
 | `onDeviceDisconnected(cb)` | `VoidFunction` | Подписка на отключение |
+| `onDefaultDeviceChanged(cb)` | `VoidFunction` | ОС сменила системный микрофон/динамик |
 | `state` | `DevicesState` | Текущее состояние |
 
 ## API — AudioOutputController
 
 | Метод | Возврат | Описание |
 |-------|---------|----------|
-| `setOutputDevice(deviceId)` | `Promise<void>` | Выбрать динамик |
+| `setOutputDevice(deviceId)` | `Promise<boolean>` | Выбрать динамик (`null`/`'default'` — системный); `false`, если не применено |
 | `registerAudioElement(el)` | `VoidFunction` | Зарегистрировать элемент |
 | `playTestSound(opts?)` | `Promise<void>` | Воспроизвести тестовый звук |
 | `autoSelectSpeakerphone()` | `Promise<boolean>` | Автовыбор динамика (мобильные) |
 | `isOutputSelectionSupported()` | `boolean` | Поддержка setSinkId |
 | `getOutputState()` | `AudioOutputState` | Состояние выхода |
 | `onChange(cb)` | `VoidFunction` | Подписка на смену |
+| `onError(cb)` | `VoidFunction` | Ошибки выбора вывода |
+| `onDeviceLost(cb)` | `VoidFunction` | Выбранный вывод пропал |

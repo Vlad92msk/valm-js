@@ -18,7 +18,14 @@ export interface VideoConfiguration {
   facingMode: 'user' | 'environment'
   /** Дополнительные MediaTrackConstraints */
   constraints: MediaTrackConstraints
+  /** Что делать, если выбранной камеры нет: 'none' — ошибка (по умолчанию), 'default' — открыть системную */
+  deviceFallback?: DeviceFallbackMode
+  /** Задержка (мс) перед onSourceMuteChange({ muted: true }); короткие «мигания» track.muted не сообщаются. По умолчанию 0 */
+  sourceMuteDebounceMs?: number
 }
+
+/** Поведение при отсутствии выбранного устройства (OverconstrainedError/NotFoundError) */
+export type DeviceFallbackMode = 'none' | 'default'
 
 export interface AudioConfiguration {
   /** Включен ли звук по умолчанию */
@@ -36,6 +43,12 @@ export interface AudioConfiguration {
   /** Порог громкости для детекции речи (0-100) */
   volumeThreshold: number
   constraints: MediaTrackConstraints
+  /** Что делать, если выбранного микрофона нет: 'none' — ошибка (по умолчанию), 'default' — открыть системный */
+  deviceFallback?: DeviceFallbackMode
+  /** В режиме «По умолчанию» переоткрывать трек, когда ОС меняет системный вход */
+  followSystemDefault?: boolean
+  /** Задержка (мс) перед onSourceMuteChange({ muted: true }) — смена BT-профиля даёт mute→unmute за сотни мс. По умолчанию 0 */
+  sourceMuteDebounceMs?: number
 }
 
 /** Режим трансляции экрана: 'presentation' — слайды/текст (лёгкий), 'video' — фильмы/видео (плавный) */

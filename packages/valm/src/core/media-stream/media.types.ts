@@ -11,6 +11,8 @@ export interface CameraState {
   hasDevice: boolean
   deviceId: string | null
   settings: MediaTrackSettings | null
+  // Источник не отдаёт кадры (track.muted: крышка ноутбука, камера занята и т.п.)
+  isSourceMuted: boolean
 }
 
 export interface CaptureFrameOptions {
@@ -40,6 +42,8 @@ export interface MicrophoneState {
   settings: MediaTrackSettings | null
   volume: number
   isSpeaking: boolean
+  // Источник не отдаёт звук (track.muted: смена BT-профиля, системный mute); не путать с isMuted
+  isSourceMuted: boolean
 }
 
 export interface LocalMediaState {
@@ -70,4 +74,6 @@ export interface MediaStreamState {
   videoSettings: MediaTrackSettings | null
   audioSettings: MediaTrackSettings | null
   isSpeaking: boolean
+  isVideoSourceMuted: boolean
+  isAudioSourceMuted: boolean
 }

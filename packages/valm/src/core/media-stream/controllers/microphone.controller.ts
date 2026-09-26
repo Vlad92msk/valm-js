@@ -12,12 +12,15 @@ import { ConfigurationService } from '../../configuration'
 import { MediaStreamService } from '../media-stream.service'
 import { ConstraintsBuilderService } from '../constraints-builder.service'
 import { AudioDataCallback } from '../audio-processing-pipeline.service'
+import { DeviceFallbackEvent, DevicesState, SourceMuteChangeEvent, SwitchResult, TrackEndedEvent } from '../device.types'
+import { toSwitchResult } from '../track-manager.shared'
 
 export class MicrophoneController {
   private stateCallbacks = new Set<MicrophoneStateChangeCallback>()
   private volumeCallbacks = new Set<VolumeChangeCallback>()
   private errorCallbacks = new Set<ErrorCallback>()
   private isInternalUpdate = false
+  private isSwitchingDevice = false
   private previewTrack: MediaStreamTrack | null = null
   private unsubscribes: VoidFunction[] = []
 
@@ -36,8 +39,9 @@ export class MicrophoneController {
       this.mediaStreamService.on(MediaEvents.VOLUME_CHANGE, (data) => {
         this._notifyVolumeChange(data)
       }),
-      this.mediaStreamService.on(MediaEvents.ERROR, (error) => {
-        this._notifyError({ source: 'camera/microphone', error })
+      this.mediaStreamService.on(MediaEvents.ERROR, (error, kind) => {
+        if (kind === 'video') return
+        this._notifyError({ source: kind ? 'microphone' : 'camera/microphone', error })
       }),
       this.configService.on('audioConfigChanged', async (event) => {
         await this.handleConfigurationChange(event)
@@ -58,7 +62,7 @@ export class MicrophoneController {
     if (!this.state.isEnabled) return
 
     try {
-      if (event.property === 'deviceId' && event.newValue !== event.oldValue) {
+      if (event.property === 'deviceId' && event.newValue !== event.oldValue && !this.isSwitchingDevice) {
         // deviceId изменился - переключаем устройство
         // Не передаем deviceId, так как он уже установлен в configService
         await this.mediaStreamService.switchAudioDevice()
@@ -93,7 +97,13 @@ export class MicrophoneController {
   enable = async (deviceId?: string): Promise<void> => {
     try {
       if (deviceId) {
-        this.configService.setAudioDevice(deviceId)
+        // Под флагом: иначе handleConfigurationChange запустит второе переключение (N8)
+        this.isSwitchingDevice = true
+        try {
+          this.configService.setAudioDevice(deviceId)
+        } finally {
+          this.isSwitchingDevice = false
+        }
       }
 
       const config = this.configService.getAudioConfig()
@@ -218,13 +228,56 @@ export class MicrophoneController {
     }
   }
 
-  switchDevice = async (deviceId: string): Promise<void> => {
+  // Резолвится после фактической смены трека; при ошибке конфиг откатывается к прежнему устройству.
+  // null — системный микрофон. force — переоткрыть даже текущее устройство (например, 'default' после смены входа в ОС)
+  switchDevice = async (deviceId: string | null, options?: { force?: boolean }): Promise<SwitchResult> => {
+    const prevDeviceId = this.configService.getAudioConfig().deviceId
+    const force = options?.force ?? false
     try {
-      this.configService.setAudioDevice(deviceId)
+      this.isSwitchingDevice = true
+      if (deviceId !== prevDeviceId) this.configService.setAudioDevice(deviceId)
+      if (!this.state.isEnabled) return { applied: false, deviceId, reason: 'disabled' }
+      // null → null без force: менеджер иначе переоткрыл бы дефолт
+      if (deviceId === null && prevDeviceId === null && !force) return { applied: false, deviceId, reason: 'noop' }
+
+      const outcome = await this.mediaStreamService.switchAudioDevice(deviceId ?? undefined, { force })
+      return toSwitchResult(outcome, deviceId)
     } catch (error) {
+      this.configService.setAudioDevice(prevDeviceId)
       this._notifyError({ source: 'microphone', action: 'switch', error })
       throw error
+    } finally {
+      this.isSwitchingDevice = false
     }
+  }
+
+  // Переоткрыть текущее устройство (config.deviceId) с сохранением mute и графа
+  reacquire = (): Promise<SwitchResult> => {
+    return this.switchDevice(this.configService.getAudioConfig().deviceId, { force: true })
+  }
+
+  // Вызывается Valm на devicechange: вернуться на выбранный микрофон, когда он снова появился после fallback
+  _handleDevicesChanged = async (devices: DevicesState): Promise<void> => {
+    const preferred = this.mediaStreamService.getFallbackFrom('audio')
+    if (!preferred || !this.state.isEnabled) return
+    if (!devices.microphones.some((d) => d.deviceId === preferred)) return
+
+    try {
+      await this.mediaStreamService.switchAudioDevice(preferred)
+    } catch (error) {
+      this._notifyError({ source: 'microphone', action: 'switch', error })
+    }
+  }
+
+  // Вызывается Valm, когда ОС сменила системный вход: при followSystemDefault переоткрываем 'default'
+  _handleDefaultDeviceChanged = async (): Promise<void> => {
+    const config = this.configService.getAudioConfig()
+    if (!config.followSystemDefault || !this.state.isEnabled) return
+    if (config.deviceId && config.deviceId !== 'default') return
+
+    await this.reacquire().catch(() => {
+      // ошибка уже отправлена в onError из switchDevice
+    })
   }
 
   // gain/визуализация через Web Audio граф; при первом использовании он включается
@@ -259,11 +312,32 @@ export class MicrophoneController {
     return this.mediaStreamService.getAudioProcessingPipeline().onAudioData(callback)
   }
 
-  onTrackReplaced = (callback: (event: { oldTrack: MediaStreamTrack; newTrack: MediaStreamTrack }) => void): VoidFunction => {
+  onTrackReplaced = (callback: (event: { oldTrack: MediaStreamTrack; newTrack: MediaStreamTrack; isMuted: boolean }) => void): VoidFunction => {
     return this.mediaStreamService.on(MediaEvents.TRACK_REPLACED, (event) => {
       if (event.kind === 'audio') {
-        callback({ oldTrack: event.oldTrack!, newTrack: event.track })
+        callback({ oldTrack: event.oldTrack!, newTrack: event.track, isMuted: event.isMuted ?? false })
       }
+    })
+  }
+
+  // Источник перестал/начал отдавать звук (track.muted); не путать с программным mute
+  onSourceMuteChange = (callback: (event: SourceMuteChangeEvent) => void): VoidFunction => {
+    return this.mediaStreamService.on(MediaEvents.SOURCE_MUTE_CHANGED, ({ kind, muted, track }) => {
+      if (kind === 'audio') callback({ muted, track })
+    })
+  }
+
+  // Трек завершился не по disable(); reason 'device-lost' — микрофона больше нет в системе
+  onTrackEnded = (callback: (event: TrackEndedEvent) => void): VoidFunction => {
+    return this.mediaStreamService.on(MediaEvents.TRACK_ENDED, (event) => {
+      if (event.kind === 'audio') callback(event)
+    })
+  }
+
+  // Выбранного микрофона нет — открыт системный (audio.deviceFallback: 'default')
+  onDeviceFallback = (callback: (event: DeviceFallbackEvent) => void): VoidFunction => {
+    return this.mediaStreamService.on(MediaEvents.DEVICE_FALLBACK, ({ kind, ...event }) => {
+      if (kind === 'audio') callback(event)
     })
   }
 
@@ -316,6 +390,7 @@ export class MicrophoneController {
       settings: mediaState.audioSettings,
       volume: mediaState.volume,
       isSpeaking: mediaState.isSpeaking,
+      isSourceMuted: mediaState.isAudioSourceMuted,
     }
   }
 }

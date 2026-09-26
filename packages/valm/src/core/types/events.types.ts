@@ -15,6 +15,9 @@ export enum MediaEvents {
   AUDIO_DISABLED = 'audioDisabled',
   MEDIA_RESET = 'mediaReset',
   AUDIO_OUTPUT_CHANGED = 'audioOutputChanged',
+  SOURCE_MUTE_CHANGED = 'sourceMuteChanged',
+  TRACK_ENDED = 'trackEnded',
+  DEVICE_FALLBACK = 'deviceFallback',
   ERROR = 'error',
 }
 
@@ -58,6 +61,8 @@ export interface TrackEvent {
   //  'device'     — сменилось физическое устройство
   //  'background' — трек подменил пайплайн эффектов (suspend/resume)
   source?: 'device' | 'background'
+  // Программный mute на момент события (для TRACK_REPLACED): новый трек уже в этом состоянии
+  isMuted?: boolean
 }
 
 export interface ConfigurationChangeEvent<T = any> {

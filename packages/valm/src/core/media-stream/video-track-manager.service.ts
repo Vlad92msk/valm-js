@@ -2,6 +2,9 @@ import { VideoConfiguration } from '../configuration/configuration.types'
 import { DeviceDetector } from '../utils'
 import { TypedEventEmitter } from '../utils'
 import { ConstraintsBuilderService } from './constraints-builder.service'
+import { getUserMediaWithFallback } from './device-fallback.helper'
+import { DeviceFallbackEvent } from './device.types'
+import { ExclusiveState, SwitchOutcome, TrackDeviceInfo, describeTrackDevice, runExclusiveOperation, SourceMuteReporter } from './track-manager.shared'
 import type { IVideoProcessingPipeline } from '../../effects'
 
 export enum VideoTrackEvents {
@@ -11,6 +14,9 @@ export enum VideoTrackEvents {
   TRACK_MUTED = 'trackMuted',
   TRACK_UNMUTED = 'trackUnmuted',
   STATE_CHANGED = 'stateChanged',
+  SOURCE_MUTE_CHANGED = 'sourceMuteChanged',
+  TRACK_ENDED = 'trackEnded',
+  DEVICE_FALLBACK = 'deviceFallback',
   ERROR = 'error',
 }
 
@@ -18,6 +24,7 @@ export interface VideoTrackState {
   track: MediaStreamTrack | null
   isEnabled: boolean
   isMuted: boolean
+  isSourceMuted: boolean
   deviceId: string | null
   settings: MediaTrackSettings | null
 }
@@ -38,8 +45,12 @@ interface VideoTrackEventMap {
   [VideoTrackEvents.TRACK_MUTED]: (payload: VideoTrackEventPayload) => void
   [VideoTrackEvents.TRACK_UNMUTED]: (payload: VideoTrackEventPayload) => void
   [VideoTrackEvents.STATE_CHANGED]: (state: VideoTrackState) => void
+  [VideoTrackEvents.SOURCE_MUTE_CHANGED]: (payload: { muted: boolean; track: MediaStreamTrack }) => void
+  [VideoTrackEvents.TRACK_ENDED]: (device: TrackDeviceInfo) => void
+  [VideoTrackEvents.DEVICE_FALLBACK]: (event: DeviceFallbackEvent) => void
   [VideoTrackEvents.ERROR]: (error: Error) => void
 }
+
 
 export class VideoTrackManagerService extends TypedEventEmitter<VideoTrackEventMap> {
   private track: MediaStreamTrack | null = null
@@ -47,11 +58,24 @@ export class VideoTrackManagerService extends TypedEventEmitter<VideoTrackEventM
   private isEnabled = false
   private isMuted = false
 
-  private pendingSwitch: Promise<void> | null = null
-  private abortController: AbortController | null = null
+  private exclusive: ExclusiveState = { pending: null, abortController: null }
 
   private isResuming = false
   private suspendAfterResume = false
+
+  private detachTrackListeners: VoidFunction | null = null
+  private sourceMute = new SourceMuteReporter(
+    () => this.getConfig().sourceMuteDebounceMs ?? 0,
+    (muted) => {
+      const track = this.getOutputTrack()
+      if (track) this.emit(VideoTrackEvents.SOURCE_MUTE_CHANGED, { muted, track })
+      this.emitStateIfChanged()
+    },
+  )
+  // Последнее открытое устройство; переживает 'ended', сбрасывается в disable()
+  private lastDevice: TrackDeviceInfo | null = null
+  // Запрошенный deviceId, вместо которого открыта системная камера (deviceFallback: 'default')
+  private fallbackFrom: string | null = null
 
   private lastEmittedState: VideoTrackState | null = null
 
@@ -67,15 +91,16 @@ export class VideoTrackManagerService extends TypedEventEmitter<VideoTrackEventM
       await this.runExclusive(async (abortController) => {
         if (this.track) {
           // Трек уже есть — просто включаем
-          this.track.enabled = true
+          this.setMutedTracks(false)
           this.isMuted = false
-          this.emit(VideoTrackEvents.TRACK_UNMUTED, { track: this.getOutputTrack() })
+          this.emit(VideoTrackEvents.TRACK_UNMUTED, { track: this.getOutputTrack()! })
         } else {
           // Создаём новый трек
           await this.acquireTrack(abortController)
         }
 
         this.isEnabled = true
+        return 'replaced'
       })
 
       return this.getOutputTrack()
@@ -89,17 +114,16 @@ export class VideoTrackManagerService extends TypedEventEmitter<VideoTrackEventM
   async enableWithTrack(externalTrack: MediaStreamTrack): Promise<MediaStreamTrack | null> {
     try {
       // Отменяем in-flight acquire/switch, иначе он позже перезапишет externalTrack
-      this.abortController?.abort()
+      this.exclusive.abortController?.abort()
 
       if (this.track) {
         this.disable()
       }
 
-      this.track = externalTrack
+      this.setTrack(externalTrack)
+      this.fallbackFrom = null
       this.isEnabled = true
       this.isMuted = false
-
-      externalTrack.addEventListener('ended', this.handleTrackEnded)
 
       await this.pipeline?.start(externalTrack)
 
@@ -119,16 +143,18 @@ export class VideoTrackManagerService extends TypedEventEmitter<VideoTrackEventM
   // Выключить видео и освободить трек
   disable(): void {
     // Отменяем in-flight acquire/switch, чтобы он не «воскресил» трек после выключения
-    this.abortController?.abort()
+    this.exclusive.abortController?.abort()
+    this.lastDevice = null
 
     if (this.track) {
-      const removedTrack = this.getOutputTrack() // ← возвращаем обработанный
+      const removedTrack = this.getOutputTrack()! // ← возвращаем обработанный
 
       // Останавливаем pipeline
       if (this.pipeline?.isRunning()) {
         this.pipeline.stop()
       }
 
+      this.detachListeners()
       this.track.stop()
       this.track = null
       this.isEnabled = false
@@ -139,11 +165,12 @@ export class VideoTrackManagerService extends TypedEventEmitter<VideoTrackEventM
     }
   }
 
-  // Заглушить видео (трек остаётся, но не передаёт данные)
+  // Заглушить видео (трек остаётся, но не передаёт данные).
+  // Глушим и сырой, и выходной трек, чтобы mute пережил suspend/resume pipeline
   mute(): void {
     const outputTrack = this.getOutputTrack()
     if (outputTrack) {
-      outputTrack.enabled = false
+      this.setMutedTracks(true)
       this.isMuted = true
       this.emit(VideoTrackEvents.TRACK_MUTED, { track: outputTrack })
       this.emitStateIfChanged()
@@ -154,11 +181,17 @@ export class VideoTrackManagerService extends TypedEventEmitter<VideoTrackEventM
   unmute(): void {
     const outputTrack = this.getOutputTrack()
     if (outputTrack) {
-      outputTrack.enabled = true
+      this.setMutedTracks(false)
       this.isMuted = false
       this.emit(VideoTrackEvents.TRACK_UNMUTED, { track: outputTrack })
       this.emitStateIfChanged()
     }
+  }
+
+  private setMutedTracks(muted: boolean): void {
+    if (this.track) this.track.enabled = !muted
+    const output = this.getOutputTrack()
+    if (output) output.enabled = !muted
   }
 
   // Установить pipeline обработки видео (вызывается из EffectsPlugin)
@@ -178,6 +211,14 @@ export class VideoTrackManagerService extends TypedEventEmitter<VideoTrackEventM
   // Получить оригинальный трек (без обработки pipeline)
   getRawTrack(): MediaStreamTrack | null {
     return this.track
+  }
+
+  getLastDevice(): TrackDeviceInfo | null {
+    return this.lastDevice
+  }
+
+  getFallbackFrom(): string | null {
+    return this.fallbackFrom
   }
 
   removePipeline(): void {
@@ -203,6 +244,7 @@ export class VideoTrackManagerService extends TypedEventEmitter<VideoTrackEventM
     const newOutputTrack = this.getOutputTrack() // вернёт this.track
 
     if (oldOutputTrack && newOutputTrack && oldOutputTrack !== newOutputTrack) {
+      if (this.isMuted) newOutputTrack.enabled = false
       this.emit(VideoTrackEvents.TRACK_REPLACED, {
         track: newOutputTrack,
         oldTrack: oldOutputTrack,
@@ -229,6 +271,8 @@ export class VideoTrackManagerService extends TypedEventEmitter<VideoTrackEventM
     const newOutputTrack = this.getOutputTrack()
 
     if (oldOutputTrack && newOutputTrack && oldOutputTrack !== newOutputTrack) {
+      // Выходной трек pipeline создаётся с enabled=true — возвращаем mute
+      if (this.isMuted) newOutputTrack.enabled = false
       this.emit(VideoTrackEvents.TRACK_REPLACED, {
         track: newOutputTrack,
         oldTrack: oldOutputTrack,
@@ -250,74 +294,39 @@ export class VideoTrackManagerService extends TypedEventEmitter<VideoTrackEventM
     }
     return this.track
   }
-  // Переключить камеру на другое устройство
-  async switchDevice(deviceId?: string): Promise<void> {
-    await this.runExclusive(async (abortController) => {
+
+  // Переключить камеру на другое устройство; force — переоткрыть даже тот же deviceId
+  async switchDevice(deviceId?: string, options?: { force?: boolean }): Promise<SwitchOutcome> {
+    return this.runExclusive(async (abortController) => {
       // Проверяем нужно ли переключать
       const currentDeviceId = this.track?.getSettings().deviceId
       const targetDeviceId = deviceId ?? this.getConfig().deviceId
 
-      if (currentDeviceId && targetDeviceId && currentDeviceId === targetDeviceId && this.isTrackActive()) {
-        return
+      if (!options?.force && currentDeviceId && targetDeviceId && currentDeviceId === targetDeviceId && this.isTrackActive()) {
+        return 'noop'
       }
 
-      if (DeviceDetector.isMobile()) {
-        // На мобильных устройствах останавливаем старый трек ДО getUserMedia —
-        // многие устройства не поддерживают два активных camera-трека одновременно
-        await this.replaceTrackMobile(abortController, deviceId)
-      } else if (this.isTrackActive()) {
-        await this.replaceTrack(abortController, deviceId)
-      } else if (this.isEnabled) {
-        await this.acquireTrack(abortController, deviceId)
+      if (this.isTrackActive()) {
+        if (DeviceDetector.isMobile()) {
+          // На мобильных устройствах останавливаем старый трек ДО getUserMedia —
+          // многие устройства не поддерживают два активных camera-трека одновременно
+          await this.replaceTrackMobile(abortController, deviceId)
+        } else {
+          await this.replaceTrack(abortController, deviceId)
+        }
+        return 'replaced'
       }
+      if (this.isEnabled) {
+        await this.acquireTrack(abortController, deviceId)
+        return 'replaced'
+      }
+      return 'disabled'
     })
   }
 
-  // Сериализует мутирующие операции над треком (enable / switchDevice): отменяет
-  // предыдущую in-flight операцию и ждёт её завершения, затем выполняет свою под
-  // собственным AbortController. Отменённые операции (AbortError) завершаются тихо —
-  // без ERROR-события и без осевших живых треков.
-  private async runExclusive(operation: (abortController: AbortController) => Promise<void>): Promise<void> {
-    // Захватываем предыдущую операцию и отменяем её — синхронно, чтобы конкурентные
-    // вызовы выстроились в корректную цепочку (каждый отменяет ровно предшественника)
-    const previous = this.pendingSwitch
-    this.abortController?.abort()
-
-    const currentAbortController = new AbortController()
-    this.abortController = currentAbortController
-
-    const operationPromise = (async () => {
-      // Ждём завершения предыдущей операции (её ошибку обрабатывает её собственный вызов)
-      if (previous) {
-        await previous.catch(() => {})
-      }
-
-      try {
-        await operation(currentAbortController)
-      } catch (error) {
-        // Отменённую операцию не считаем ошибкой — её вытеснила более новая
-        if (error instanceof DOMException && error.name === 'AbortError') {
-          return
-        }
-        throw error
-      } finally {
-        if (this.abortController === currentAbortController) {
-          this.abortController = null
-        }
-      }
-
-      this.emitStateIfChanged()
-    })()
-
-    this.pendingSwitch = operationPromise
-
-    try {
-      await operationPromise
-    } finally {
-      if (this.pendingSwitch === operationPromise) {
-        this.pendingSwitch = null
-      }
-    }
+  // Сериализует мутирующие операции над треком (enable / switchDevice); вытесненная операция → 'superseded'
+  private runExclusive(operation: (abortController: AbortController) => Promise<SwitchOutcome>): Promise<SwitchOutcome> {
+    return runExclusiveOperation(this.exclusive, operation, () => this.emitStateIfChanged())
   }
 
   getTrack(): MediaStreamTrack | null {
@@ -330,6 +339,7 @@ export class VideoTrackManagerService extends TypedEventEmitter<VideoTrackEventM
       track: outputTrack,
       isEnabled: this.isEnabled,
       isMuted: this.isMuted,
+      isSourceMuted: this.sourceMute.isMuted,
       deviceId: this.track?.getSettings().deviceId ?? null,
       settings: outputTrack?.getSettings() ?? null,
     }
@@ -337,9 +347,9 @@ export class VideoTrackManagerService extends TypedEventEmitter<VideoTrackEventM
 
   // Уничтожить менеджер и освободить ресурсы
   destroy(): void {
-    if (this.abortController) {
-      this.abortController.abort()
-      this.abortController = null
+    if (this.exclusive.abortController) {
+      this.exclusive.abortController.abort()
+      this.exclusive.abortController = null
     }
 
     this.removePipeline()
@@ -347,20 +357,8 @@ export class VideoTrackManagerService extends TypedEventEmitter<VideoTrackEventM
     this.removeAllListeners()
   }
 
-  // Получить новый трек; stopOldTrackBefore=true для iOS (stop старого до getUserMedia)
-  private async getNewTrack(abortController?: AbortController, deviceId?: string, stopOldTrackBefore: boolean = false): Promise<MediaStreamTrack> {
-    const oldTrack = stopOldTrackBefore ? this.track : null
-
-    if (stopOldTrackBefore && oldTrack) {
-      oldTrack.removeEventListener('ended', this.handleTrackEnded)
-      oldTrack.stop()
-      this.track = null
-      this.emit(VideoTrackEvents.TRACK_REMOVED, { track: oldTrack })
-
-      // iOS требует небольшую паузу после stop()
-      await new Promise((res) => setTimeout(res, 100))
-    }
-
+  // gUM с учётом deviceFallback; отменённая операция не оставляет живых треков
+  private async openTrack(abortController?: AbortController, deviceId?: string): Promise<MediaStreamTrack> {
     const config = this.getConfig()
     const effectiveConfig = deviceId ? { ...config, deviceId } : config
     const constraints = ConstraintsBuilderService.buildVideoConstraints(effectiveConfig)
@@ -369,27 +367,26 @@ export class VideoTrackManagerService extends TypedEventEmitter<VideoTrackEventM
       throw new DOMException('Operation aborted', 'AbortError')
     }
 
-    const tempStream = await navigator.mediaDevices.getUserMedia({ video: constraints })
+    const { stream, fallback } = await getUserMediaWithFallback('video', constraints, effectiveConfig.deviceId, config.deviceFallback)
 
     if (abortController?.signal.aborted) {
-      tempStream.getTracks().forEach((t) => t.stop())
+      stream.getTracks().forEach((t) => t.stop())
       throw new DOMException('Operation aborted', 'AbortError')
     }
 
-    const newTrack = tempStream.getVideoTracks()[0]
-    newTrack.addEventListener('ended', this.handleTrackEnded)
+    this.fallbackFrom = fallback ? fallback.requestedDeviceId : null
+    if (fallback) this.emit(VideoTrackEvents.DEVICE_FALLBACK, fallback)
 
-    return newTrack
+    return stream.getVideoTracks()[0]
   }
 
   private async acquireTrack(abortController?: AbortController, deviceId?: string): Promise<void> {
-    const newTrack = await this.getNewTrack(abortController, deviceId, false)
-    this.track = newTrack
+    const newTrack = await this.openTrack(abortController, deviceId)
+    this.setTrack(newTrack)
     this.isEnabled = true
     this.isMuted = false
 
-    // Запускаем pipeline с новым треком
-    await this.pipeline?.start(newTrack)
+    await this.startPipelineSafe(newTrack)
 
     const outputTrack = this.getOutputTrack()
     if (outputTrack) {
@@ -400,88 +397,134 @@ export class VideoTrackManagerService extends TypedEventEmitter<VideoTrackEventM
   private async replaceTrack(abortController?: AbortController, deviceId?: string): Promise<void> {
     const oldTrack = this.track
     const oldOutputTrack = this.getOutputTrack()
-    const wasMuted = this.isMuted
 
-    // Останавливаем pipeline
+    // Сначала getUserMedia: при ошибке pipeline и выходной трек остаются нетронутыми
+    const newTrack = await this.openTrack(abortController, deviceId)
+
     if (this.pipeline?.isRunning()) {
       this.pipeline.stop()
     }
 
-    const newTrack = await this.getNewTrack(abortController, deviceId, false)
-
     if (oldTrack) {
-      oldTrack.removeEventListener('ended', this.handleTrackEnded)
+      this.detachListeners()
       oldTrack.stop()
     }
 
-    this.track = newTrack
-    this.isMuted = wasMuted
-
-    // Запускаем pipeline с новым треком
-    await this.pipeline?.start(newTrack)
-
-    const newOutputTrack = this.getOutputTrack()
-    if (newOutputTrack) {
-      if (wasMuted) newOutputTrack.enabled = false
-
-      if (oldOutputTrack) {
-        this.emit(VideoTrackEvents.TRACK_REPLACED, {
-          track: newOutputTrack,
-          oldTrack: oldOutputTrack,
-          source: 'device',
-        })
-      } else {
-        this.emit(VideoTrackEvents.TRACK_ADDED, { track: newOutputTrack })
-      }
-    }
+    await this.installNewTrack(newTrack, oldOutputTrack)
   }
 
-  // iOS: stop старого трека до получения нового (ограничение Safari)
+  // Мобильные: камера одна, поэтому старый трек останавливается до getUserMedia.
+  // При ошибке пробуем вернуть прежнее устройство, иначе честно выключаемся
   private async replaceTrackMobile(abortController?: AbortController, deviceId?: string): Promise<void> {
     const oldOutputTrack = this.getOutputTrack()
-    const wasMuted = this.isMuted
+    const prevDeviceId = this.lastDevice?.deviceId ?? undefined
 
-    // Останавливаем pipeline
     if (this.pipeline?.isRunning()) {
       this.pipeline.stop()
     }
+    if (this.track) {
+      this.detachListeners()
+      this.track.stop()
+      this.track = null
+    }
 
-    const newTrack = await this.getNewTrack(abortController, deviceId, true)
+    // iOS требует небольшую паузу после stop()
+    await new Promise((res) => setTimeout(res, 100))
 
-    this.track = newTrack
-    this.isMuted = wasMuted
+    let newTrack: MediaStreamTrack
+    try {
+      newTrack = await this.openTrack(abortController, deviceId)
+    } catch (error) {
+      const restored =
+        prevDeviceId && prevDeviceId !== deviceId && !abortController?.signal.aborted
+          ? await this.openTrack(undefined, prevDeviceId).catch(() => null)
+          : null
 
-    // Запускаем pipeline с новым треком
-    await this.pipeline?.start(newTrack)
+      if (restored) {
+        await this.installNewTrack(restored, oldOutputTrack)
+      } else {
+        this.isEnabled = false
+        this.isMuted = false
+        if (oldOutputTrack) this.emit(VideoTrackEvents.TRACK_REMOVED, { track: oldOutputTrack })
+        this.emitStateIfChanged()
+      }
+      throw error
+    }
+
+    await this.installNewTrack(newTrack, oldOutputTrack)
+  }
+
+  // Поставить новый сырой трек, поднять pipeline, сохранить mute и сообщить о замене
+  private async installNewTrack(newTrack: MediaStreamTrack, oldOutputTrack: MediaStreamTrack | null): Promise<void> {
+    const wasMuted = this.isMuted
+    this.setTrack(newTrack)
+    newTrack.enabled = !wasMuted
+
+    await this.startPipelineSafe(newTrack)
 
     const newOutputTrack = this.getOutputTrack()
-    if (newOutputTrack) {
-      if (wasMuted) newOutputTrack.enabled = false
+    if (!newOutputTrack) return
+    if (wasMuted) newOutputTrack.enabled = false
 
-      if (oldOutputTrack) {
-        this.emit(VideoTrackEvents.TRACK_REPLACED, {
-          track: newOutputTrack,
-          oldTrack: oldOutputTrack,
-          source: 'device',
-        })
-      } else {
-        this.emit(VideoTrackEvents.TRACK_ADDED, { track: newOutputTrack })
-      }
+    if (oldOutputTrack) {
+      this.emit(VideoTrackEvents.TRACK_REPLACED, {
+        track: newOutputTrack,
+        oldTrack: oldOutputTrack,
+        source: 'device',
+      })
+    } else {
+      this.emit(VideoTrackEvents.TRACK_ADDED, { track: newOutputTrack })
     }
   }
 
-  // Камера отключена или трек завершился
-  private handleTrackEnded = (ev: Event): void => {
-    const endedTrack = ev.target as MediaStreamTrack | null
-    if (!endedTrack) return
-
-    // Если трек уже не актуальный — игнорируем
-    if (this.track !== endedTrack) {
-      return
+  // Ошибка pipeline не должна оставлять потребителя на мёртвом треке: отдаём сырой трек + ERROR
+  private async startPipelineSafe(track: MediaStreamTrack): Promise<void> {
+    try {
+      await this.pipeline?.start(track)
+    } catch (error) {
+      if (this.pipeline?.isRunning()) this.pipeline.stop()
+      this.emit(VideoTrackEvents.ERROR, error instanceof Error ? error : new Error(String(error)))
     }
+  }
 
-    // Снимаем слушатель
-    endedTrack.removeEventListener('ended', this.handleTrackEnded)
+  // Единая точка подписки на ended/mute/unmute сырого трека (выход pipeline их не получает)
+  private setTrack(track: MediaStreamTrack): void {
+    this.detachListeners()
+    this.track = track
+    this.lastDevice = describeTrackDevice(track)
+
+    const onEnded = () => this.handleTrackEnded(track)
+    const onMute = () => this.handleSourceMute(track, true)
+    const onUnmute = () => this.handleSourceMute(track, false)
+    track.addEventListener('ended', onEnded)
+    track.addEventListener('mute', onMute)
+    track.addEventListener('unmute', onUnmute)
+
+    this.detachTrackListeners = () => {
+      track.removeEventListener('ended', onEnded)
+      track.removeEventListener('mute', onMute)
+      track.removeEventListener('unmute', onUnmute)
+    }
+    if (track.muted) this.sourceMute.update(true)
+  }
+
+  private detachListeners(): void {
+    this.detachTrackListeners?.()
+    this.detachTrackListeners = null
+    this.sourceMute.reset()
+  }
+
+  private handleSourceMute(track: MediaStreamTrack, muted: boolean): void {
+    if (this.track !== track) return
+    this.sourceMute.update(muted)
+  }
+
+  // Камера отключена или трек завершился (не disable): lastDevice сохраняется
+  private handleTrackEnded(endedTrack: MediaStreamTrack): void {
+    // Если трек уже не актуальный — игнорируем
+    if (this.track !== endedTrack) return
+
+    this.detachListeners()
 
     // Запоминаем output трек ДО остановки pipeline —
     // приложение держит именно его, а не raw трек камеры
@@ -500,6 +543,7 @@ export class VideoTrackManagerService extends TypedEventEmitter<VideoTrackEventM
       this.emit(VideoTrackEvents.TRACK_REMOVED, { track: outputTrack })
     }
     this.emitStateIfChanged()
+    if (this.lastDevice) this.emit(VideoTrackEvents.TRACK_ENDED, this.lastDevice)
   }
 
   private isTrackActive(): boolean {
@@ -514,6 +558,7 @@ export class VideoTrackManagerService extends TypedEventEmitter<VideoTrackEventM
       track,
       isEnabled: this.isEnabled,
       isMuted: this.isMuted,
+      isSourceMuted: this.sourceMute.isMuted,
       deviceId: settings?.deviceId ?? null,
       settings,
     }
@@ -523,15 +568,12 @@ export class VideoTrackManagerService extends TypedEventEmitter<VideoTrackEventM
       !this.lastEmittedState ||
       this.lastEmittedState.isEnabled !== currentState.isEnabled ||
       this.lastEmittedState.isMuted !== currentState.isMuted ||
+      this.lastEmittedState.isSourceMuted !== currentState.isSourceMuted ||
       this.lastEmittedState.deviceId !== currentState.deviceId ||
       this.lastEmittedState.track !== currentState.track
 
     if (changed) {
-      this.lastEmittedState = {
-        ...currentState,
-        // важно: сохраняем конкретные settings,
-        // но не используем их для "глубоких" сравнений
-      }
+      this.lastEmittedState = currentState
       this.emit(VideoTrackEvents.STATE_CHANGED, currentState)
     }
   }

@@ -34,9 +34,14 @@ await mic.toggleMute()   // mute ↔ unmute (трек остаётся, но tra
 ### Переключение устройства
 
 ```typescript
-await mic.switchDevice(deviceId)    // обновить deviceId в конфигурации
-await mic.updateDevice(deviceId)    // то же самое — алиас
+const result = await mic.switchDevice(deviceId)  // резолвится после реальной замены трека
+// result: { applied: boolean, deviceId, reason?: 'noop' | 'superseded' | 'disabled' }
+await mic.switchDevice(null)                     // системный микрофон
+await mic.reacquire()                            // переоткрыть текущее устройство (например, 'default' после смены входа в ОС)
+await mic.updateDevice(deviceId)                 // только обновить конфигурацию, ошибки уйдут в onError
 ```
+
+`switchDevice` отклоняется, если новое устройство не открылось; прежний трек при этом продолжает работать, а `deviceId` в конфигурации откатывается. Мягкий mute переживает смену. При выключенном микрофоне меняется только конфигурация (`reason: 'disabled'`). Вызов, вытесненный более новым `switchDevice`, резолвится с `reason: 'superseded'`.
 
 ### Аудио-обработка
 
@@ -86,6 +91,8 @@ interface MicrophoneState {
   settings: MediaTrackSettings | null  // настройки активного трека
   volume: number                       // текущий уровень громкости (0–100)
   isSpeaking: boolean                  // говорит ли пользователь
+  isSourceMuted: boolean               // источник не отдаёт звук (track.muted: смена BT-профиля,
+                                       // системный mute); в отличие от isMuted, Valm им не управляет
 }
 ```
 
@@ -101,8 +108,13 @@ interface AudioConfiguration {
   enableSpeakingDetection: boolean
   volumeThreshold: number              // порог детекции речи (0–100)
   constraints: MediaTrackConstraints
+  deviceFallback?: 'none' | 'default'  // выбранного микрофона нет: 'none' — ошибка (по умолчанию), 'default' — открыть системный
+  followSystemDefault?: boolean        // в режиме «По умолчанию» переоткрывать трек, когда ОС меняет системный вход
+  sourceMuteDebounceMs?: number        // задержка перед onSourceMuteChange({ muted: true }); короткие «мигания» не сообщаются (по умолчанию 0)
 }
 ```
+
+При `deviceFallback: 'default'` выбранный `deviceId` остаётся в конфигурации: Valm вернётся на него, когда устройство снова подключат. Если активный микрофон пропал во время работы, Valm откроет системный (`onDeviceFallback` с `reason: 'device-lost'`).
 
 ---
 
@@ -124,10 +136,20 @@ mic.onError((error: MediaErrorEvent) => {
   // error.error: unknown
 })
 
-mic.onTrackReplaced(({ oldTrack, newTrack }) => {
+mic.onTrackReplaced(({ oldTrack, newTrack, isMuted }) => {
   // oldTrack: MediaStreamTrack
   // newTrack: MediaStreamTrack
+  // isMuted: boolean — мягкий mute уже применён к newTrack
 })
+
+// Источник перестал/начал отдавать звук (работает и при включённом аудио-графе)
+mic.onSourceMuteChange(({ muted, track }) => showWarning(muted ? 'Микрофон не передаёт звук' : null))
+
+// Трек завершился не по disable(): reason 'device-lost' | 'ended'
+mic.onTrackEnded(({ reason, deviceId, label }) => { ... })
+
+// Выбранного микрофона нет, открыт системный (deviceFallback: 'default')
+mic.onDeviceFallback(({ requestedDeviceId, actualDeviceId, reason }) => { ... })
 
 unsub() // отписка
 ```
@@ -206,7 +228,8 @@ await mic.publishPreview();
 | `toggleMute()` | `Promise<void>` | Мягкий mute/unmute |
 | `reset()` | `Promise<void>` | Выключить (если был включён) |
 | `destroy()` | `void` | Уничтожить контроллер |
-| `switchDevice(deviceId)` | `Promise<void>` | Обновить устройство в конфигурации |
+| `switchDevice(deviceId, opts?)` | `Promise<SwitchResult>` | Сменить устройство и дождаться нового трека; `opts.force` переоткрывает то же устройство |
+| `reacquire()` | `Promise<SwitchResult>` | Переоткрыть текущее устройство |
 | `updateDevice(deviceId)` | `Promise<void>` | Обновить устройство в конфигурации |
 | `updateAudioProcessing(opts)` | `Promise<void>` | Настроить аудио-обработку |
 | `updateVolumeThreshold(n)` | `void` | Порог детекции речи (0–100) |
@@ -226,3 +249,6 @@ await mic.publishPreview();
 | `onVolumeChange(cb)` | `VoidFunction` | Подписка на уровень громкости |
 | `onError(cb)` | `VoidFunction` | Подписка на ошибки |
 | `onTrackReplaced(cb)` | `VoidFunction` | Подписка на замену трека |
+| `onSourceMuteChange(cb)` | `VoidFunction` | Источник заглушён/ожил (`track.muted`) |
+| `onTrackEnded(cb)` | `VoidFunction` | Трек завершился не по `disable()` |
+| `onDeviceFallback(cb)` | `VoidFunction` | Открыто системное устройство вместо выбранного |

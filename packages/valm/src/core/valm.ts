@@ -66,9 +66,10 @@ export class Valm extends TypedEventEmitter<ValmEvents> {
 
     this.devicesController = new DevicesController(
       this.audioOutputController,
+      // Последнее открытое устройство: переживает 'ended', поэтому отключение не теряется
       () => ({
-        camera: this.mediaStreamService.getState().currentVideoDevice,
-        microphone: this.mediaStreamService.getState().currentAudioDevice,
+        camera: this.mediaStreamService.getLastDevice('video')?.deviceId ?? null,
+        microphone: this.mediaStreamService.getLastDevice('audio')?.deviceId ?? null,
       }),
       this.permissionsService,
     )
@@ -279,6 +280,15 @@ export class Valm extends TypedEventEmitter<ValmEvents> {
     this.unsubscribes.push(
       this.cameraController.onError(handleError),
       this.microphoneController.onError(handleError),
+      // Возврат на выбранное устройство после fallback, когда оно снова подключено
+      this.devicesController.onChange((devices) => {
+        void this.cameraController._handleDevicesChanged(devices)
+        void this.microphoneController._handleDevicesChanged(devices)
+      }),
+      // audio.followSystemDefault: переоткрыть 'default', когда ОС сменила системный вход
+      this.devicesController.onDefaultDeviceChanged((event) => {
+        if (event.kind === 'microphone') void this.microphoneController._handleDefaultDeviceChanged()
+      }),
     )
 
     this.mediaStreamService.on(MediaEvents.ERROR, (error) => {

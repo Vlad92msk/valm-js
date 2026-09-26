@@ -26,10 +26,14 @@ camera.destroy()                  // destroy the controller, remove all subscrip
 ### Switching devices
 
 ```typescript
-await camera.switchDevice(deviceId)   // switch the track immediately (if the camera is on)
+const result = await camera.switchDevice(deviceId)  // switch the track immediately (if the camera is on)
+// result: { applied: boolean, deviceId, reason?: 'noop' | 'superseded' | 'disabled' }
+await camera.reacquire()              // reopen the current camera (e.g. after NotReadableError)
 await camera.updateDevice(deviceId)   // update deviceId in the configuration without switching the track
 await camera.toggleFacing()           // switch between 'user' (front) and 'environment' (rear)
 ```
+
+If the new camera cannot be opened, `switchDevice` rejects while the current track — including the video-effects output — keeps working, and `deviceId` in the configuration is rolled back. On mobile (one camera at a time) Valm tries to reopen the previous camera; if that fails too, the camera is turned off with `onStateChange`.
 
 ### Preview
 
@@ -158,6 +162,7 @@ interface CameraState {
   hasDevice: boolean                   // a video device was detected
   deviceId: string | null              // ID of the current device
   settings: MediaTrackSettings | null  // settings of the active track
+  isSourceMuted: boolean               // the source delivers no frames (track.muted: lid closed, camera busy)
 }
 ```
 
@@ -171,6 +176,8 @@ interface VideoConfiguration {
   frameRate: number
   facingMode: 'user' | 'environment'
   constraints: MediaTrackConstraints
+  deviceFallback?: 'none' | 'default'  // chosen camera is missing: 'none' — error (default), 'default' — open the system one
+  sourceMuteDebounceMs?: number        // delay before onSourceMuteChange({ muted: true }) (default 0)
 }
 ```
 
@@ -189,9 +196,14 @@ camera.onError((error: MediaErrorEvent) => {
   // error.error: unknown
 })
 
-camera.onTrackReplaced(({ oldTrack, newTrack, source }) => {
+camera.onTrackReplaced(({ oldTrack, newTrack, source, isMuted }) => {
   // source: 'device' | 'background' | undefined
+  // isMuted: boolean — mute is already applied to newTrack
 })
+
+camera.onSourceMuteChange(({ muted, track }) => { ... })       // track.muted of the raw camera track
+camera.onTrackEnded(({ reason, deviceId, label }) => { ... })  // 'device-lost' | 'ended'
+camera.onDeviceFallback(({ requestedDeviceId, actualDeviceId, reason }) => { ... })
 
 unsub() // unsubscribe
 ```
@@ -207,7 +219,8 @@ unsub() // unsubscribe
 | `toggle()` | `Promise<void>` | Toggle state |
 | `reset()` | `Promise<void>` | Disable the camera |
 | `destroy()` | `void` | Destroy the controller |
-| `switchDevice(deviceId)` | `Promise<void>` | Switch device and track |
+| `switchDevice(deviceId, opts?)` | `Promise<SwitchResult>` | Switch device and track; `opts.force` reopens the same device |
+| `reacquire()` | `Promise<SwitchResult>` | Reopen the current camera |
 | `updateDevice(deviceId)` | `Promise<void>` | Update deviceId in the configuration |
 | `toggleFacing()` | `Promise<void>` | Front / rear camera |
 | `preview(deviceId?)` | `Promise<MediaStreamTrack>` | Create a preview track |
@@ -232,3 +245,6 @@ unsub() // unsubscribe
 | `onStateChange(cb)` | `VoidFunction` | Subscribe to `CameraState` |
 | `onError(cb)` | `VoidFunction` | Subscribe to errors |
 | `onTrackReplaced(cb)` | `VoidFunction` | Subscribe to track replacement |
+| `onSourceMuteChange(cb)` | `VoidFunction` | Source muted/unmuted (`track.muted`) |
+| `onTrackEnded(cb)` | `VoidFunction` | Track ended not by `disable()` |
+| `onDeviceFallback(cb)` | `VoidFunction` | System camera opened instead of the chosen one |

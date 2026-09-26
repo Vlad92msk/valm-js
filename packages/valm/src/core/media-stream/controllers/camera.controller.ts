@@ -13,6 +13,8 @@ import {
 import { ConstraintsBuilderService } from '../constraints-builder.service'
 import { ConfigurationService } from '../../configuration'
 import { MediaStreamService } from '../media-stream.service'
+import { DeviceFallbackEvent, DevicesState, SourceMuteChangeEvent, SwitchResult, TrackEndedEvent } from '../device.types'
+import { toSwitchResult } from '../track-manager.shared'
 
 export class CameraController {
   private stateCallbacks = new Set<CameraStateChangeCallback>()
@@ -35,8 +37,9 @@ export class CameraController {
       this.mediaStreamService.on(MediaEvents.VIDEO_STATE_CHANGED, () => {
         this._notifyStateChange(this.state)
       }),
-      this.mediaStreamService.on(MediaEvents.ERROR, (error) => {
-        this._notifyError({ source: 'camera/microphone', error })
+      this.mediaStreamService.on(MediaEvents.ERROR, (error, kind) => {
+        if (kind === 'audio') return
+        this._notifyError({ source: kind ? 'camera' : 'camera/microphone', error })
       }),
       this.configService.on('videoConfigChanged', async (event) => {
         if (!this.state.isEnabled) return
@@ -91,6 +94,11 @@ export class CameraController {
 
   enable = async (deviceId?: string): Promise<void> => {
     try {
+      if (deviceId && this.state.isEnabled) {
+        // Камера уже включена — это смена устройства, а не второе включение
+        await this.switchDevice(deviceId)
+        return
+      }
       if (deviceId) {
         this.configService.setVideoDevice(deviceId)
       }
@@ -124,18 +132,44 @@ export class CameraController {
     }
   }
 
-  switchDevice = async (deviceId: string): Promise<void> => {
+  // Резолвится после фактической смены; при ошибке deviceId в конфиге откатывается.
+  // null — системная камера. force — переоткрыть даже текущее устройство (например, после NotReadableError)
+  switchDevice = async (deviceId: string | null, options?: { force?: boolean }): Promise<SwitchResult> => {
+    const prevDeviceId = this.configService.getVideoConfig().deviceId
+    const force = options?.force ?? false
     try {
       this.isSwitchingDevice = true
-      this.configService.setVideoDevice(deviceId)
-      if (this.state.isEnabled) {
-        await this.mediaStreamService.switchVideoDevice(deviceId)
-      }
+      if (deviceId !== prevDeviceId) this.configService.setVideoDevice(deviceId)
+      if (!this.state.isEnabled) return { applied: false, deviceId, reason: 'disabled' }
+      if (deviceId === null && prevDeviceId === null && !force) return { applied: false, deviceId, reason: 'noop' }
+
+      const outcome = await this.mediaStreamService.switchVideoDevice(deviceId ?? undefined, { force })
+      return toSwitchResult(outcome, deviceId)
     } catch (error) {
+      // N1: иначе следующий enable() упрётся в тот же недоступный deviceId
+      this.configService.setVideoDevice(prevDeviceId)
       this._notifyError({ source: 'camera', action: 'switch', error })
       throw error
     } finally {
       this.isSwitchingDevice = false
+    }
+  }
+
+  // Переоткрыть текущую камеру (config.deviceId) с сохранением эффектов и mute
+  reacquire = (): Promise<SwitchResult> => {
+    return this.switchDevice(this.configService.getVideoConfig().deviceId, { force: true })
+  }
+
+  // Вызывается Valm на devicechange: вернуться на выбранную камеру, когда она снова появилась после fallback
+  _handleDevicesChanged = async (devices: DevicesState): Promise<void> => {
+    const preferred = this.mediaStreamService.getFallbackFrom('video')
+    if (!preferred || !this.state.isEnabled) return
+    if (!devices.cameras.some((d) => d.deviceId === preferred)) return
+
+    try {
+      await this.mediaStreamService.switchVideoDevice(preferred)
+    } catch (error) {
+      this._notifyError({ source: 'camera', action: 'switch', error })
     }
   }
 
@@ -212,11 +246,32 @@ export class CameraController {
     }
   }
 
-  onTrackReplaced = (callback: (event: { oldTrack: MediaStreamTrack; newTrack: MediaStreamTrack; source?: 'device' | 'background' }) => void): VoidFunction => {
+  onTrackReplaced = (callback: (event: { oldTrack: MediaStreamTrack; newTrack: MediaStreamTrack; source?: 'device' | 'background'; isMuted: boolean }) => void): VoidFunction => {
     return this.mediaStreamService.on(MediaEvents.TRACK_REPLACED, (event) => {
       if (event.kind === 'video') {
-        callback({ oldTrack: event.oldTrack!, newTrack: event.track, source: event.source })
+        callback({ oldTrack: event.oldTrack!, newTrack: event.track, source: event.source, isMuted: event.isMuted ?? false })
       }
+    })
+  }
+
+  // Источник перестал/начал отдавать кадры (track.muted: крышка ноутбука, камера занята другим приложением)
+  onSourceMuteChange = (callback: (event: SourceMuteChangeEvent) => void): VoidFunction => {
+    return this.mediaStreamService.on(MediaEvents.SOURCE_MUTE_CHANGED, ({ kind, muted, track }) => {
+      if (kind === 'video') callback({ muted, track })
+    })
+  }
+
+  // Трек завершился не по disable(); reason 'device-lost' — камеры больше нет в системе
+  onTrackEnded = (callback: (event: TrackEndedEvent) => void): VoidFunction => {
+    return this.mediaStreamService.on(MediaEvents.TRACK_ENDED, (event) => {
+      if (event.kind === 'video') callback(event)
+    })
+  }
+
+  // Выбранной камеры нет — открыта системная (video.deviceFallback: 'default')
+  onDeviceFallback = (callback: (event: DeviceFallbackEvent) => void): VoidFunction => {
+    return this.mediaStreamService.on(MediaEvents.DEVICE_FALLBACK, ({ kind, ...event }) => {
+      if (kind === 'video') callback(event)
     })
   }
 
@@ -544,6 +599,7 @@ export class CameraController {
       hasDevice: mediaState.hasVideo,
       deviceId: mediaState.currentVideoDevice,
       settings,
+      isSourceMuted: mediaState.isVideoSourceMuted,
     }
   }
 }

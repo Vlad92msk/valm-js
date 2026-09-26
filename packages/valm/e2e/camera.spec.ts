@@ -148,3 +148,30 @@ test('onTrackReplaced возвращает функцию отписки', async
   const isFn = await page.evaluate(() => typeof window.__valm.cameraController.onTrackReplaced(() => {}) === 'function')
   expect(isFn).toBe(true)
 })
+
+test('switchDevice() с эффектом: при ошибке gUM выходной трек остаётся живым, deviceId откатывается', async ({ page }) => {
+  await page.evaluate(() => {
+    const orig = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices)
+    navigator.mediaDevices.getUserMedia = async (c: any) => {
+      if (c?.video?.deviceId?.exact === 'bad') throw new DOMException('busy', 'NotReadableError')
+      return orig(c?.video ? { video: { ...c.video, deviceId: undefined } } : c)
+    }
+  })
+  const r = await page.evaluate(async () => {
+    const v = window.__valm
+    v.use(new window.Effects.EffectsPlugin())
+    await v.cameraController.enable()
+    await v.effectsController.enableBlur()
+    await new Promise((res) => setTimeout(res, 300))
+    const out = v.cameraController.getTrack()
+    const prevId = v.cameraController.getConfiguration().deviceId
+    const err = await v.cameraController.switchDevice('bad').then(() => null, (e: any) => e.name)
+    return {
+      err,
+      outLive: out?.readyState,
+      same: v.cameraController.getTrack() === out,
+      rolledBack: v.cameraController.getConfiguration().deviceId === prevId,
+    }
+  })
+  expect(r).toEqual({ err: 'NotReadableError', outLive: 'live', same: true, rolledBack: true })
+})
