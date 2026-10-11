@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 2.0.0 - 2026-09-26
 
 Device switching and device loss, found while integrating Valm into a video-call client.
 
