@@ -11,6 +11,7 @@ declare global {
     lang: string
     start(): void
     stop(): void
+    abort(): void
     onresult: ((event: SpeechRecognitionEvent) => void) | null
     onerror: ((event: SpeechRecognitionErrorEvent) => void) | null
     onend: (() => void) | null

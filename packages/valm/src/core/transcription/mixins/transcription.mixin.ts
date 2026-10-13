@@ -8,6 +8,7 @@ export const DEFAULT_TRANSCRIPTION_CONFIG: TranscriptionConfiguration = {
   language: 'ru-RU',
   interimResults: true,
   saveTranscripts: false,
+  pauseOnMute: true,
 }
 
 export interface TranscriptionConfigMixin {

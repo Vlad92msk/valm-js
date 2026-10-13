@@ -34,7 +34,14 @@ export type {
 // Types
 export * from './core/types'
 export type { RecordingState } from './core/recording/recording.service'
-export type { TranscriptionState } from './core/transcription/transcription.types'
+export type {
+  TranscriptionState,
+  TranscriptionStatus,
+  TranscriptionStopReason,
+  TranscriptionErrorCode,
+  TranscriptItem,
+  TranscriptEvent,
+} from './core/transcription/transcription.types'
 export type { ValmEvents } from './core/media-stream/manager-events.types'
 
 // Utilities

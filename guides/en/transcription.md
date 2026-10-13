@@ -1,6 +1,12 @@
 # TranscriptionController
 
-Speech-to-text transcription based on the Web Speech API. Supported in Chrome and Edge; not supported in Safari and Firefox.
+Speech-to-text transcription based on the Web Speech API. Verified in desktop Chrome and Edge; not supported in Firefox.
+
+> **What is recognised.** The browser listens to the **system default microphone** itself, not to the Valm track. The device selected in your app, noise suppression, gain and audio effects do not affect recognition. Only the local user's speech is recognised.
+>
+> **One session per browser.** Chrome keeps a single recognition session across all tabs. If another tab or site starts one, the current one stops with `stopReason: 'aborted'` and is not restarted.
+>
+> **Mobile.** Safari (including iOS) and Chrome on Android expose the constructor, so `isSupported` is `true`, but behaviour there has not been verified: a sound may play on every start and recognition may conflict with the call's microphone. Test on your devices before enabling it.
 
 ## Access
 
@@ -27,13 +33,16 @@ const media = new Valm({
     language: 'ru-RU',       // recognition language, BCP-47 (default: 'ru-RU')
     interimResults: true,    // receive interim results (default: true)
     saveTranscripts: false,  // keep history in memory (default: false)
+    pauseOnMute: true,       // do not listen while the Valm microphone is muted (default: true)
   }
 })
 ```
 
-**`autoStart`** — if `true`, transcription starts automatically when the microphone is enabled (an audio track is added to the stream), and stops when it's disabled.
+**`autoStart`** — if `true`, transcription starts automatically when the microphone is enabled (an audio track is added to the stream).
 
-**`interimResults`** — if `true`, the `onTranscript` callback is invoked with `isFinal: false` for interim results that may still change.
+**`pauseOnMute`** — if `true`, recognition is paused (`status: 'paused'`) while the microphone is muted (`microphoneController.toggleMute()`), and nothing said while muted is delivered. It resumes by itself after unmute.
+
+**`interimResults`** — if `true`, interim results that may still change are delivered (`isFinal: false` in `onTranscript`, the `interim` field in `onTranscriptEvent`).
 
 **`saveTranscripts`** — if `true`, all received `TranscriptItem`s accumulate in memory and are available via `getTranscripts()`.
 
@@ -54,6 +63,29 @@ transcription.stop()          // stop
 await transcription.toggle()  // if active — stop, otherwise — start
 ```
 
+`stop()` followed immediately by `start()` is safe: each recognition session is isolated, late events of the old one do not affect the new one.
+
+### Microphone and recognition
+
+`start()` is an intent: `isActive` stays `true` until you call `stop()` or recognition stops on an error. Whether the browser is listening right now is in `status`.
+
+- Microphone muted (with `pauseOnMute: true`) — `status: 'paused'`, recognition returns after unmute.
+- Microphone turned off (`disable()`, device lost) — `status: 'paused'`, recognition returns when it is back. Previously it stopped for good.
+- `start()` while the Valm microphone is off listens right away: recognition does not need the Valm track. In a call, only call `start()` while the microphone is on.
+
+### Restarts and errors
+
+The browser ends a session by itself after a pause in speech — Valm opens the next one.
+
+| What happened | What Valm does |
+|---|---|
+| Silence (`no-speech`), normal end of a session | Restart after 100 ms |
+| `network` and other non-fatal errors | Restart with a growing delay: 1 s, 2 s, 4 s … up to 30 s. The delay resets after the first result |
+| `aborted` | Stop, `stopReason: 'aborted'`: another tab or site took the session |
+| `not-allowed`, `service-not-allowed`, `audio-capture`, `language-not-supported`, `bad-grammar` | Stop, `stopReason: 'error'` |
+
+Every stop is reported through `onStateChange` — there is no need to poll `state.isActive` on a timer.
+
 ### Language
 
 ```typescript
@@ -63,7 +95,7 @@ transcription.updateLanguage('en-US')  // English (US)
 transcription.updateLanguage('de-DE')  // German
 ```
 
-Changing the language during active transcription restarts it automatically.
+Changing the language during active transcription restarts it automatically. So does `configurationController.updateTranscriptionConfig({ language, interimResults })`.
 
 #### Supported languages
 
@@ -106,10 +138,19 @@ transcription.state  // TranscriptionState — current state (getter)
 
 ```typescript
 interface TranscriptionState {
-  isActive: boolean        // true — transcription running
-  isSupported: boolean     // true — the browser supports the Web Speech API (Chrome/Edge)
+  isActive: boolean        // true — transcription requested (start() without stop() and without a stop on error)
+  isSupported: boolean     // true — the browser has the Web Speech API
   currentLanguage: string  // current recognition language (BCP-47, e.g. 'ru-RU')
+  status: TranscriptionStatus
+  stopReason: 'manual' | 'aborted' | 'error' | null  // why it stopped last time
 }
+
+type TranscriptionStatus =
+  | 'idle'        // not requested
+  | 'starting'    // a session is opening
+  | 'listening'   // the browser is listening
+  | 'restarting'  // gap between sessions (silence, network error)
+  | 'paused'      // requested, but the microphone is muted or off
 ```
 
 ---
@@ -125,6 +166,7 @@ const unsub = transcription.onTranscript((transcript: TranscriptItem) => {
   // transcript.isFinal: boolean   — true = final result, false = interim (may change)
   // transcript.confidence: number — confidence from 0 (low) to 1 (high)
   // transcript.timestamp: number  — Date.now() at the moment the result was received
+  // transcript.resultIndex: number — phrase number within the session: the same for interim versions and the final one
 
   if (transcript.isFinal) {
     appendToTranscript(transcript.text)
@@ -134,18 +176,30 @@ const unsub = transcription.onTranscript((transcript: TranscriptItem) => {
 })
 unsub()  // unsubscribe
 
+// onTranscriptEvent(cb): VoidFunction — one recognition event as a whole
+// Chrome often delivers several results in one event (a settled part and a "tail",
+// a final phrase and the start of the next one). Here they are already joined — easier for subtitles than onTranscript.
+transcription.onTranscriptEvent((event: TranscriptEvent) => {
+  // event.final: string            — phrases finished in this event ('' if none)
+  // event.interim: string          — the whole current unfinished text
+  // event.items: TranscriptItem[]  — the same results one by one
+  // event.timestamp: number
+  if (event.final) appendLine(event.final)
+  currentLineEl.textContent = event.interim
+})
+
 // onStateChange(cb): VoidFunction
 transcription.onStateChange((state: TranscriptionState) => {
-  // state.isActive: boolean        — transcription running
-  // state.isSupported: boolean     — the browser supports the Web Speech API
-  // state.currentLanguage: string  — current language (BCP-47)
-  micBtn.classList.toggle('transcribing', state.isActive)
+  // called on start/stop, on status changes and when recognition stops on an error
+  micBtn.classList.toggle('transcribing', state.status === 'listening')
+  if (state.stopReason === 'aborted') showHint('Recognition is in use by another tab')
 })
 
 // onError(cb): VoidFunction
 transcription.onError((error: MediaErrorEvent) => {
   // error.source: string    — always 'transcription'
-  // error.action?: string   — 'start' | 'autoStart' | 'configUpdate'
+  // error.action?: string   — 'start' | 'autoStart' | 'session' (error of a running session) | 'restart' (could not open the next one)
+  // error.code?: string     — Web Speech API code ('network', 'aborted', …) when the error came from recognition
   // error.error: unknown    — the original error (SpeechRecognitionErrorEvent or Error)
   console.error('Transcription error:', error)
 })
@@ -173,13 +227,11 @@ transcription.onError((error: MediaErrorEvent) => {
 ```typescript
 await transcription.start()
 
-const unsub = transcription.onTranscript(({ text, isFinal }) => {
-  if (isFinal) {
-    subtitleEl.textContent = text
-    setTimeout(() => (subtitleEl.textContent = ''), 5000)
-  } else {
-    subtitleEl.textContent = text + '...'  // interim result
-  }
+let hideTimer: ReturnType<typeof setTimeout>
+const unsub = transcription.onTranscriptEvent(({ final, interim }) => {
+  subtitleEl.textContent = interim || final
+  clearTimeout(hideTimer)
+  if (!interim) hideTimer = setTimeout(() => (subtitleEl.textContent = ''), 5000)
 })
 
 // When done
@@ -244,6 +296,7 @@ media.transcriptionController.onTranscript(({ text, isFinal }) => {
 | `getTranscripts()` | `TranscriptItem[]` | Get a copy of the transcript history |
 | `clearTranscripts()` | `void` | Clear history from memory |
 | `state` | `TranscriptionState` | Current state (getter) |
-| `onTranscript(cb)` | `VoidFunction` | Subscribe to new speech fragments |
+| `onTranscript(cb)` | `VoidFunction` | Subscribe to individual results |
+| `onTranscriptEvent(cb)` | `VoidFunction` | Subscribe to whole recognition events (`final` + `interim`) |
 | `onStateChange(cb)` | `VoidFunction` | Subscribe to state changes |
 | `onError(cb)` | `VoidFunction` | Subscribe to errors |

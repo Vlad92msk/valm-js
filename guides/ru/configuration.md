@@ -164,6 +164,7 @@ config.updateTranscriptionConfig({
   interimResults: true,    // показывать промежуточные результаты
   autoStart: false,        // автоматически стартовать при инициализации
   saveTranscripts: true,   // сохранять историю транскриптов
+  pauseOnMute: true,       // не слушать, пока микрофон в mute
 })
 
 // setTranscriptionLanguage(language: string): void
@@ -293,6 +294,7 @@ interface TranscriptionConfiguration {
   language: string              // BCP-47 код языка, например 'en-US', 'ru-RU'
   interimResults: boolean       // показывать промежуточные (не финальные) результаты
   saveTranscripts: boolean      // сохранять историю транскриптов
+  pauseOnMute: boolean          // не слушать, пока микрофон в mute
 }
 ```
 

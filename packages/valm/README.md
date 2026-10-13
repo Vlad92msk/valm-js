@@ -143,7 +143,7 @@ recording.onRecordingLimitReached(({ type, limit }) => {
 
 ## Transcription
 
-Uses the browser's Web Speech API (Chrome and Edge only).
+Uses the browser's Web Speech API (verified in desktop Chrome and Edge).
 
 ```typescript
 const transcription = media.transcriptionController
@@ -151,10 +151,23 @@ const transcription = media.transcriptionController
 await transcription.start()
 transcription.stop()
 
-transcription.onTranscript(({ text, isFinal }) => {
-  subtitleEl.textContent = text
+// One recognition event as a whole: finished phrases + the current unfinished text
+transcription.onTranscriptEvent(({ final, interim }) => {
+  if (final) appendLine(final)
+  subtitleEl.textContent = interim
+})
+
+transcription.onStateChange(({ status, stopReason }) => {
+  // status: 'idle' | 'starting' | 'listening' | 'restarting' | 'paused'
+  // stopReason: 'manual' | 'aborted' | 'error' | null
 })
 ```
+
+- The browser listens to the **system default microphone**, not to the Valm track: the device selected in the app and audio processing do not apply.
+- Recognition pauses while the Valm microphone is muted (`transcription.pauseOnMute`, default `true`) or off, and resumes by itself.
+- Chrome allows one recognition session per browser. If another tab takes it, recognition stops with `stopReason: 'aborted'`.
+- Network errors are retried with a growing delay (1 s → 30 s).
+- On mobile (Safari, Chrome for Android) `isSupported` is `true`, but behaviour is not verified.
 
 ## Video effects
 

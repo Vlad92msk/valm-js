@@ -45,6 +45,8 @@ export interface MediaErrorEvent {
   source: MediaErrorSource
   action?: string
   error: unknown
+  // Код ошибки, если он известен (сейчас — код Web Speech API для source: 'transcription')
+  code?: string
 }
 
 export interface VolumeChangeEvent {

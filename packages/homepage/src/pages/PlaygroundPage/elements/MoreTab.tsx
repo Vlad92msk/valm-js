@@ -53,13 +53,9 @@ const MoreTab = ({ media, onError }: MoreTabProps) => {
     )
 
     unsubs.push(
-      media.transcriptionController.onTranscript((item) => {
-        if (item.isFinal) {
-          setTranscripts((prev) => [...prev, { text: item.text, timestamp: item.timestamp }])
-          setInterimTranscript('')
-        } else {
-          setInterimTranscript(item.text)
-        }
+      media.transcriptionController.onTranscriptEvent(({ final, interim, timestamp }) => {
+        if (final) setTranscripts((prev) => [...prev, { text: final, timestamp }])
+        setInterimTranscript(interim)
       }),
     )
 

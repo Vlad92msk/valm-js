@@ -1,5 +1,32 @@
 # Changelog
 
+## 2.1.1 - 2026-10-13
+
+Transcription, found while adding live captions to a video-call client.
+
+### Behaviour changes
+
+- Recognition pauses while the microphone is muted (`transcription.pauseOnMute`, default `true`) and resumes on unmute. Nothing said while muted is delivered. Set `pauseOnMute: false` for the old behaviour.
+- Turning the microphone off (or losing the device) pauses recognition instead of stopping it; it resumes when the microphone is back, with or without `autoStart`. `state.isActive` stays `true` in between, `state.status` is `'paused'`.
+- `aborted` (another tab or site took the browser's recognition session) stops recognition with `stopReason: 'aborted'` instead of restarting every 100 ms.
+- `network` and other non-fatal errors are retried with a growing delay (1 s → 30 s, reset after the first result) instead of every 100 ms. Silence (`no-speech`) still restarts right away.
+- `onError` for a recognition error now has `action: 'session'` (was `undefined`).
+
+### Fixed
+
+- `stop()` followed by `start()` no longer breaks recognition: a late `onend` of the old session touched the new one, left it running and reported `isActive: false`.
+- `onStateChange` fires when recognition stops on an error. Before, `isActive` became `false` silently.
+- `configurationController.updateTranscriptionConfig({ language })` restarts an active session, as `updateLanguage()` does. The same for `interimResults`.
+- A failed `start()` no longer keeps the unstarted recognition instance.
+
+### Added
+
+- `TranscriptionState.status` (`'idle' | 'starting' | 'listening' | 'restarting' | 'paused'`) and `stopReason` (`'manual' | 'aborted' | 'error' | null`).
+- `transcriptionController.onTranscriptEvent(cb)`: one recognition event as `{ final, interim, items, timestamp }`. Chrome often puts several results into one event; `onTranscript` delivers them one by one.
+- `TranscriptItem.resultIndex`.
+- `MediaErrorEvent.code` — the Web Speech API error code for transcription errors.
+- Exported types: `TranscriptItem`, `TranscriptEvent`, `TranscriptionStatus`, `TranscriptionStopReason`, `TranscriptionErrorCode`.
+
 ## 2.1.0 - 2026-10-13
 
 ### Changed
