@@ -34,7 +34,7 @@
 Доделано во втором заходе: `sourceMuteDebounceMs` (аудио и видео), `isMuted` в `onTrackReplaced`, раздел README «SFU integration» (mediasoup `disableTrackOnPause`), `packages/valm/CHANGELOG.md`. e2e: 211 passed.
 
 **Осталось (следующий раз):**
-- [x] `pipeline.switchInput(newTrack)` — бесшовная смена камеры с эффектом без пересоздания `frameOutput` и без `TRACK_REPLACED` для SFU (этап 2 из #6). Сделано 2026-10-13 (не опубликовано, CHANGELOG → Unreleased): пока pipeline работает, меняется только его вход; при ошибке `switchInput` или pipeline без этого метода — прежний перезапуск с `TRACK_REPLACED`. Мобильный путь тоже через `switchInput` (старый трек по-прежнему останавливается до gUM). Тесты: три новых в `e2e/camera.spec.ts` (успех, pipeline без `switchInput`, мобильный путь с подменой UA); e2e от исходников — 214 passed, 1 skipped. На реальном телефоне не проверялось (см. §10).
+- [x] `pipeline.switchInput(newTrack)` — бесшовная смена камеры с эффектом без пересоздания `frameOutput` и без `TRACK_REPLACED` для SFU (этап 2 из #6). Сделано 2026-10-13, версия 2.1.0: пока pipeline работает, меняется только его вход; при ошибке `switchInput` или pipeline без этого метода — прежний перезапуск с `TRACK_REPLACED`. Мобильный путь тоже через `switchInput` (старый трек по-прежнему останавливается до gUM). Тесты: три новых в `e2e/camera.spec.ts` (успех, pipeline без `switchInput`, мобильный путь с подменой UA); e2e от исходников — 214 passed, 1 skipped. На реальном телефоне не проверялось (см. §10).
 - [ ] §10 — ручная проверка на реальном железе (BT-гарнитура, выдёргивание USB, занятая камера, Firefox/Safari).
 
 ---
