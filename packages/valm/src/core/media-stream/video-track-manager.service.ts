@@ -401,7 +401,15 @@ export class VideoTrackManagerService extends TypedEventEmitter<VideoTrackEventM
     // Сначала getUserMedia: при ошибке pipeline и выходной трек остаются нетронутыми
     const newTrack = await this.openTrack(abortController, deviceId)
 
-    if (this.pipeline?.isRunning()) {
+    const seamless = await this.switchPipelineInput(newTrack)
+
+    // Пока pipeline менял вход, камеру могли выключить
+    if (!seamless && abortController?.signal.aborted) {
+      newTrack.stop()
+      throw new DOMException('Operation aborted', 'AbortError')
+    }
+
+    if (!seamless && this.pipeline?.isRunning()) {
       this.pipeline.stop()
     }
 
@@ -410,7 +418,11 @@ export class VideoTrackManagerService extends TypedEventEmitter<VideoTrackEventM
       oldTrack.stop()
     }
 
-    await this.installNewTrack(newTrack, oldOutputTrack)
+    if (seamless) {
+      this.setRawTrack(newTrack)
+    } else {
+      await this.installNewTrack(newTrack, oldOutputTrack)
+    }
   }
 
   // Мобильные: камера одна, поэтому старый трек останавливается до getUserMedia.
@@ -419,9 +431,7 @@ export class VideoTrackManagerService extends TypedEventEmitter<VideoTrackEventM
     const oldOutputTrack = this.getOutputTrack()
     const prevDeviceId = this.lastDevice?.deviceId ?? undefined
 
-    if (this.pipeline?.isRunning()) {
-      this.pipeline.stop()
-    }
+    // Pipeline не останавливаем: если камера откроется, сменим только его вход
     if (this.track) {
       this.detachListeners()
       this.track.stop()
@@ -441,8 +451,9 @@ export class VideoTrackManagerService extends TypedEventEmitter<VideoTrackEventM
           : null
 
       if (restored) {
-        await this.installNewTrack(restored, oldOutputTrack)
+        await this.installAfterStop(restored, oldOutputTrack)
       } else {
+        if (this.pipeline?.isRunning()) this.pipeline.stop()
         this.isEnabled = false
         this.isMuted = false
         if (oldOutputTrack) this.emit(VideoTrackEvents.TRACK_REMOVED, { track: oldOutputTrack })
@@ -451,14 +462,43 @@ export class VideoTrackManagerService extends TypedEventEmitter<VideoTrackEventM
       throw error
     }
 
+    await this.installAfterStop(newTrack, oldOutputTrack)
+  }
+
+  // Старый сырой трек уже остановлен: меняем вход работающего pipeline, иначе перезапускаем его
+  private async installAfterStop(newTrack: MediaStreamTrack, oldOutputTrack: MediaStreamTrack | null): Promise<void> {
+    if (await this.switchPipelineInput(newTrack)) {
+      this.setRawTrack(newTrack)
+      return
+    }
+    if (this.pipeline?.isRunning()) this.pipeline.stop()
     await this.installNewTrack(newTrack, oldOutputTrack)
+  }
+
+  // Бесшовная смена камеры: выходной трек pipeline остаётся тем же, поэтому TRACK_REPLACED не нужен.
+  // false — pipeline не запущен, не умеет менять вход или не смог: нужен обычный перезапуск
+  private async switchPipelineInput(newTrack: MediaStreamTrack): Promise<boolean> {
+    const pipeline = this.pipeline
+    if (!pipeline?.isRunning() || !pipeline.switchInput) return false
+    try {
+      await pipeline.switchInput(newTrack)
+      return true
+    } catch {
+      return false
+    }
+  }
+
+  // Новый сырой трек с сохранением mute
+  private setRawTrack(newTrack: MediaStreamTrack): void {
+    const wasMuted = this.isMuted
+    this.setTrack(newTrack)
+    newTrack.enabled = !wasMuted
   }
 
   // Поставить новый сырой трек, поднять pipeline, сохранить mute и сообщить о замене
   private async installNewTrack(newTrack: MediaStreamTrack, oldOutputTrack: MediaStreamTrack | null): Promise<void> {
     const wasMuted = this.isMuted
-    this.setTrack(newTrack)
-    newTrack.enabled = !wasMuted
+    this.setRawTrack(newTrack)
 
     await this.startPipelineSafe(newTrack)
 

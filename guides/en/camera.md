@@ -200,6 +200,8 @@ camera.onTrackReplaced(({ oldTrack, newTrack, source, isMuted }) => {
   // source: 'device' | 'background' | undefined
   // isMuted: boolean — mute is already applied to newTrack
 })
+// While the video effects pipeline is running, a camera switch only changes its input:
+// the published track stays the same and onTrackReplaced does not fire. Read the new device from onStateChange
 
 camera.onSourceMuteChange(({ muted, track }) => { ... })       // track.muted of the raw camera track
 camera.onTrackEnded(({ reason, deviceId, label }) => { ... })  // 'device-lost' | 'ended'
@@ -222,7 +224,7 @@ unsub() // unsubscribe
 | `switchDevice(deviceId, opts?)` | `Promise<SwitchResult>` | Switch device and track; `opts.force` reopens the same device |
 | `reacquire()` | `Promise<SwitchResult>` | Reopen the current camera |
 | `updateDevice(deviceId)` | `Promise<void>` | Update deviceId in the configuration |
-| `toggleFacing()` | `Promise<void>` | Front / rear camera |
+| `toggleFacing()` | `Promise<FacingResult>` | Front / rear camera. `applied: false, reason: 'noop'` — the camera has no facing, the browser reopened the same one |
 | `preview(deviceId?)` | `Promise<MediaStreamTrack>` | Create a preview track |
 | `publishPreview()` | `Promise<void>` | Publish the preview to the main stream |
 | `stopPreview()` | `void` | Stop the preview |

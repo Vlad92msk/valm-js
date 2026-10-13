@@ -200,6 +200,8 @@ camera.onTrackReplaced(({ oldTrack, newTrack, source, isMuted }) => {
   // source: 'device' | 'background' | undefined
   // isMuted: boolean — mute уже применён к newTrack
 })
+// Пока работает pipeline видеоэффектов, смена камеры меняет только его вход:
+// публикуемый трек остаётся тем же и onTrackReplaced не вызывается. Новое устройство — в onStateChange
 
 camera.onSourceMuteChange(({ muted, track }) => { ... })       // track.muted сырого трека камеры
 camera.onTrackEnded(({ reason, deviceId, label }) => { ... })  // 'device-lost' | 'ended'
@@ -222,7 +224,7 @@ unsub() // отписка
 | `switchDevice(deviceId, opts?)` | `Promise<SwitchResult>` | Переключить устройство и трек; `opts.force` переоткрывает то же устройство |
 | `reacquire()` | `Promise<SwitchResult>` | Переоткрыть текущую камеру |
 | `updateDevice(deviceId)` | `Promise<void>` | Обновить deviceId в конфигурации |
-| `toggleFacing()` | `Promise<void>` | Фронтальная / задняя камера |
+| `toggleFacing()` | `Promise<FacingResult>` | Фронтальная / задняя камера. `applied: false, reason: 'noop'` — у камеры нет признака стороны, браузер открыл ту же |
 | `preview(deviceId?)` | `Promise<MediaStreamTrack>` | Создать превью-трек |
 | `publishPreview()` | `Promise<void>` | Опубликовать превью в основной поток |
 | `stopPreview()` | `void` | Остановить превью |

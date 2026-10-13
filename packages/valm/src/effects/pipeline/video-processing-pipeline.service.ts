@@ -174,6 +174,41 @@ export class VideoProcessingPipelineService implements IVideoProcessingPipeline 
     this.scheduleNextFrame()
   }
 
+  // Сменить входной трек без пересоздания frameOutput: выходной трек остаётся прежним.
+  // До готовности нового источника кадры идут со старого; при ошибке pipeline не тронут
+  async switchInput(inputTrack: MediaStreamTrack): Promise<void> {
+    const output = this.frameOutput
+    if (!this.running || !output) {
+      throw new Error('Pipeline is not running')
+    }
+
+    const newSource = FrameProcessorFactory.createSource()
+    try {
+      await newSource.initialize(inputTrack)
+    } catch (error) {
+      newSource.dispose()
+      throw error
+    }
+
+    // Пока источник инициализировался, pipeline могли остановить или перезапустить
+    if (!this.running || this.frameOutput !== output) {
+      newSource.dispose()
+      throw new Error('Pipeline was stopped during input switch')
+    }
+
+    if (this.frameSource) {
+      this.frameSource.offDimensionsChanged(this.boundHandleDimensionsChanged)
+      this.frameSource.dispose()
+    }
+    this.frameSource = newSource
+    newSource.onDimensionsChanged(this.boundHandleDimensionsChanged)
+
+    const dimensions = newSource.getVideoDimensions()
+    if (dimensions.width !== this.config.width || dimensions.height !== this.config.height) {
+      this.handleDimensionsChanged(dimensions)
+    }
+  }
+
   // Обработчик изменения размеров
   private handleDimensionsChanged(dimensions: { width: number; height: number }): void {
     // Если идёт обработка кадра (await detect) — откладываем resize до конца кадра

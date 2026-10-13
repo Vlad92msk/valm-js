@@ -100,6 +100,11 @@ export interface RecordingConfiguration {
   chunkInterval: number
 }
 
+// Начальный конфиг: каждый раздел можно задать частично, недостающие поля берутся из значений по умолчанию
+export type ValmConfigurationInput = {
+  [K in keyof ValmConfiguration]?: Partial<ValmConfiguration[K]>
+}
+
 export interface ValmConfiguration {
   video: VideoConfiguration
   audio: AudioConfiguration

@@ -175,3 +175,113 @@ test('switchDevice() с эффектом: при ошибке gUM выходно
   })
   expect(r).toEqual({ err: 'NotReadableError', outLive: 'live', same: true, rolledBack: true })
 })
+
+// Смена камеры при работающем pipeline: меняется только вход, публикуемый трек тот же
+async function switchWithPipeline(page: import('@playwright/test').Page, withSwitchInput: boolean) {
+  return page.evaluate(async (seamless) => {
+    const v = window.__valm
+    v.use(new window.Effects.EffectsPlugin())
+    await v.cameraController.enable()
+    await v.effectsController.enableBlur()
+    await new Promise((res) => setTimeout(res, 300))
+    const manager = v.mediaStreamService.getVideoTrackManager()
+    if (!seamless) manager.getPipeline().switchInput = undefined
+    v.mediaStreamService.muteVideo()
+
+    const out = v.cameraController.getTrack()
+    const raw = manager.getRawTrack()
+    let replaced = 0
+    v.cameraController.onTrackReplaced(() => replaced++)
+
+    const result = await v.cameraController.reacquire()
+    const newOut = v.cameraController.getTrack()
+    const muted = newOut.enabled === false && manager.getRawTrack().enabled === false
+
+    // Кадры идут и после смены входа
+    v.mediaStreamService.unmuteVideo()
+    const video = document.createElement('video')
+    video.muted = true
+    video.srcObject = new MediaStream([newOut])
+    await video.play()
+    const gotFrame = await Promise.race([
+      new Promise<boolean>((res) => video.requestVideoFrameCallback(() => res(true))),
+      new Promise<boolean>((res) => setTimeout(() => res(false), 3000)),
+    ])
+    video.srcObject = null
+
+    return {
+      applied: result.applied,
+      sameOutput: newOut === out,
+      outLive: newOut.readyState,
+      rawChanged: manager.getRawTrack() !== raw,
+      oldRaw: raw.readyState,
+      replaced,
+      muted,
+      gotFrame,
+      blur: v.effectsController.state.activeEffects.length,
+    }
+  }, withSwitchInput)
+}
+
+test('switchDevice() с эффектом: выходной трек не меняется, onTrackReplaced не летит', async ({ page }) => {
+  const r = await switchWithPipeline(page, true)
+  expect(r).toEqual({ applied: true, sameOutput: true, outLive: 'live', rawChanged: true, oldRaw: 'ended', replaced: 0, muted: true, gotFrame: true, blur: 1 })
+})
+
+test('switchDevice() с pipeline без switchInput: перезапуск pipeline и onTrackReplaced', async ({ page }) => {
+  const r = await switchWithPipeline(page, false)
+  expect(r).toEqual({ applied: true, sameOutput: false, outLive: 'live', rawChanged: true, oldRaw: 'ended', replaced: 1, muted: true, gotFrame: true, blur: 1 })
+})
+
+test('мобильный switchDevice() с эффектом: выходной трек тот же и при успехе, и при возврате на прежнюю камеру', async ({ page }) => {
+  await page.evaluate(() => {
+    Object.defineProperty(navigator, 'userAgent', {
+      get: () => 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1',
+    })
+    const orig = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices)
+    navigator.mediaDevices.getUserMedia = async (c: any) => {
+      if (c?.video?.deviceId?.exact === 'bad') throw new DOMException('busy', 'NotReadableError')
+      return orig(c?.video ? { video: { ...c.video, deviceId: undefined } } : c)
+    }
+  })
+  const r = await page.evaluate(async () => {
+    const v = window.__valm
+    v.use(new window.Effects.EffectsPlugin())
+    await v.cameraController.enable()
+    await v.effectsController.enableBlur()
+    await new Promise((res) => setTimeout(res, 300))
+    const manager = v.mediaStreamService.getVideoTrackManager()
+    const out = v.cameraController.getTrack()
+    let replaced = 0
+    v.cameraController.onTrackReplaced(() => replaced++)
+
+    const raw1 = manager.getRawTrack()
+    const ok = await v.cameraController.reacquire()
+    const raw2 = manager.getRawTrack()
+    const err = await v.cameraController.switchDevice('bad').then(() => null, (e: any) => e.name)
+    const raw3 = manager.getRawTrack()
+
+    return {
+      isMobile: window.Valm.DeviceDetector.isMobile(),
+      applied: ok.applied,
+      err,
+      sameOutput: v.cameraController.getTrack() === out,
+      outLive: out.readyState,
+      raws: [raw1 !== raw2, raw2 !== raw3, raw3?.readyState],
+      enabled: v.cameraController.state.isEnabled,
+      running: manager.getPipeline().isRunning(),
+      replaced,
+    }
+  })
+  expect(r).toEqual({
+    isMobile: true,
+    applied: true,
+    err: 'NotReadableError',
+    sameOutput: true,
+    outLive: 'live',
+    raws: [true, true, 'live'],
+    enabled: true,
+    running: true,
+    replaced: 0,
+  })
+})

@@ -1,5 +1,21 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- Switching the camera while the video effects pipeline is running is now seamless: only the pipeline input is swapped, the output track stays the same and `onTrackReplaced` is not emitted (no `replaceTrack` on the SFU side). Applies to `switchDevice`, `reacquire`, `toggleFacing` and automatic returns after a fallback. If you used `onTrackReplaced` to detect a camera change, use `onStateChange` (`deviceId`) instead. When the pipeline is not running, behaviour is unchanged.
+
+### Fixed
+
+- `toggleFacing()` rolls back `facingMode` and `deviceId` in the configuration when the switch fails.
+
+### Added
+
+- `cameraController.toggleFacing()` returns `FacingResult { applied, deviceId, facingMode, reason? }` instead of `void`. `applied: false, reason: 'noop'` means the browser reopened the same camera (cameras without a facing mode, e.g. a laptop or an external webcam); `deviceId` is the camera that is actually open.
+- `new Valm(config)` accepts partial sections (`{ video: { enabled: false } }` now type-checks); missing fields come from the defaults, as they already did at runtime.
+- `IVideoProcessingPipeline.switchInput(track)` (optional). A custom pipeline without it is restarted on a camera switch, as before.
+
 ## 2.0.0 - 2026-09-26
 
 Device switching and device loss, found while integrating Valm into a video-call client.

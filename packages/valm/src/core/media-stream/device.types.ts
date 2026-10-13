@@ -38,6 +38,13 @@ export interface SwitchResult {
   reason?: 'noop' | 'superseded' | 'disabled'
 }
 
+// Результат toggleFacing: applied=true — открыта другая камера. У камер без признака стороны
+// (ноутбук, внешняя веб-камера) браузер открывает ту же: applied=false, reason='noop'.
+// facingMode — значение, записанное в конфиг
+export interface FacingResult extends SwitchResult {
+  facingMode: 'user' | 'environment'
+}
+
 export interface DeviceFallbackEvent {
   requestedDeviceId: string
   actualDeviceId: string | null

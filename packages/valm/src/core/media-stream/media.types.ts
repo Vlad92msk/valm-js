@@ -1,4 +1,4 @@
-import { ValmConfiguration } from '../configuration/configuration.types'
+import { ValmConfiguration, ValmConfigurationInput } from '../configuration/configuration.types'
 import { ScreenShareState } from '../screen-share/screen-share.types'
 import { TranscriptionState } from '../transcription/transcription.types'
 import type { EffectsState } from '../../effects'
@@ -56,7 +56,7 @@ export interface LocalMediaState {
   effects: EffectsState | null
 }
 
-export interface ValmConfig extends Partial<ValmConfiguration> {
+export interface ValmConfig extends ValmConfigurationInput {
   autoInitialize?: boolean
 }
 

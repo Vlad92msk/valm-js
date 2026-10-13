@@ -1,4 +1,4 @@
-import { ValmConfiguration } from '../types'
+import { ValmConfiguration, ValmConfigurationInput } from '../types'
 import { WithAudioConfiguration, WithVideoConfiguration } from '../media-stream'
 import { WithRecordingConfiguration } from '../recording'
 import { WithScreenShareConfiguration } from '../screen-share'
@@ -20,7 +20,7 @@ export class ConfigurationService extends ConfigurationServiceMixins {
   // (после composeMixins все секции гарантированно заполнены через getDefaultConfig)
   declare protected config: ValmConfiguration
 
-  constructor(initialConfig: Partial<ValmConfiguration> = {}) {
+  constructor(initialConfig: ValmConfigurationInput = {}) {
     super(initialConfig)
   }
 

@@ -334,6 +334,7 @@ media.cameraController.onTrackReplaced(({ newTrack }) => cameraProducer.replaceT
 
 - **Soft mute and mediasoup.** `Producer.replaceTrack` with `disableTrackOnPause: true` (the default) sets `track.enabled = !producer.paused`, which overrides Valm's soft mute on the new track. Either pause the producer together with `toggleMute()` (`producer.pause()` / `resume()`), or create the producer with `disableTrackOnPause: false`. `onTrackReplaced` passes `isMuted` so you can keep them in sync.
 - **Track replacement happens not only on `switchDevice`:** enabling gain/visualisation/audio effects, turning video effects on and off (`source: 'background'`), `reacquire()` and automatic fallbacks (`deviceFallback`, `followSystemDefault`) also replace the track. Always handle `onTrackReplaced`.
+- **Camera switch with video effects is seamless.** While the effects pipeline is running, `switchDevice` only swaps the pipeline input: the published track stays the same, `onTrackReplaced` does not fire and no `producer.replaceTrack` is needed. Use `onStateChange` (`deviceId`) to learn which camera is active.
 - **Device loss.** When the active device disappears, the track ends: `onTrackEnded({ reason: 'device-lost' })` and `onStateChange({ isEnabled: false })`. With `deviceFallback: 'default'` Valm then reopens the system device as a new track (not a replacement): pick it up from `onStateChange` / `getTrack()` and `replaceTrack` it on the producer.
 
 ## Permissions

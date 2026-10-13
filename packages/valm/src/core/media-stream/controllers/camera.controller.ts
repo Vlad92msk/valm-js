@@ -13,7 +13,7 @@ import {
 import { ConstraintsBuilderService } from '../constraints-builder.service'
 import { ConfigurationService } from '../../configuration'
 import { MediaStreamService } from '../media-stream.service'
-import { DeviceFallbackEvent, DevicesState, SourceMuteChangeEvent, SwitchResult, TrackEndedEvent } from '../device.types'
+import { DeviceFallbackEvent, DevicesState, FacingResult, SourceMuteChangeEvent, SwitchResult, TrackEndedEvent } from '../device.types'
 import { toSwitchResult } from '../track-manager.shared'
 
 export class CameraController {
@@ -173,20 +173,29 @@ export class CameraController {
     }
   }
 
-  toggleFacing = async (): Promise<void> => {
-    try {
-      const currentFacing = this.configService.getVideoConfig().facingMode || 'user'
-      const newFacing = currentFacing === 'user' ? 'environment' : 'user'
+  // Резолвится после фактической смены. facingMode — пожелание (ideal): сменилась ли камера на самом деле,
+  // говорит applied. При ошибке facingMode и deviceId в конфиге откатываются
+  toggleFacing = async (): Promise<FacingResult> => {
+    const { facingMode: prevFacing, deviceId: prevDeviceId } = this.configService.getVideoConfig()
+    const newFacing = (prevFacing || 'user') === 'user' ? 'environment' : 'user'
 
+    try {
       this.configService.updateVideoConfig({
         facingMode: newFacing,
         deviceId: null,
       })
 
-      if (this.state.isEnabled) {
-        await this.mediaStreamService.switchVideoDevice()
-      }
+      if (!this.state.isEnabled) return { applied: false, deviceId: null, reason: 'disabled', facingMode: newFacing }
+
+      const before = this.mediaStreamService.getLastDevice('video')?.deviceId ?? null
+      const outcome = await this.mediaStreamService.switchVideoDevice()
+      const actual = this.mediaStreamService.getLastDevice('video')?.deviceId ?? null
+
+      // Камера без признака стороны (ноутбук, внешняя веб-камера): браузер открыл ту же
+      const sameCamera = outcome === 'replaced' && before !== null && actual === before
+      return { ...toSwitchResult(sameCamera ? 'noop' : outcome, actual), facingMode: newFacing }
     } catch (error) {
+      this.configService.updateVideoConfig({ facingMode: prevFacing, deviceId: prevDeviceId })
       this._notifyError({ source: 'camera', action: 'toggleFacing', error })
       throw error
     }

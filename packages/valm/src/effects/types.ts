@@ -88,6 +88,8 @@ export interface IVideoProcessingPipeline {
   start(inputTrack: MediaStreamTrack): Promise<void>
   stop(): void
   dispose(): void
+  // Сменить входной трек, сохранив выходной. Необязателен: без него смена камеры перезапускает pipeline
+  switchInput?(inputTrack: MediaStreamTrack): Promise<void>
 
   getOutputTrack(): MediaStreamTrack | null
 

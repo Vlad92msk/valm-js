@@ -132,3 +132,27 @@ test('toggleFacing() несколько раз подряд флипает facin
   expect(live).toBe('live')
   expect(await page.evaluate(() => window.__events.length)).toBe(0)
 })
+
+test('toggleFacing() сообщает, сменилась ли камера, и откатывает конфиг при ошибке', async ({ page }) => {
+  const r = await page.evaluate(async () => {
+    const camera = window.__valm.cameraController
+    const disabled = await camera.toggleFacing()
+    await camera.enable()
+    const deviceId = window.__valm.mediaStreamService.getLastDevice('video').deviceId
+    // фейковая камера одна и без признака стороны — браузер откроет её же
+    const same = await camera.toggleFacing()
+
+    const before = camera.getConfiguration().facingMode
+    const orig = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices)
+    navigator.mediaDevices.getUserMedia = async () => {
+      throw new DOMException('busy', 'NotReadableError')
+    }
+    const err = await camera.toggleFacing().then(() => null, (e: any) => e.name)
+    navigator.mediaDevices.getUserMedia = orig
+    return { disabled, same, sameDevice: same.deviceId === deviceId, err, rolledBack: camera.getConfiguration().facingMode === before, live: camera.getTrack()?.readyState }
+  })
+  expect(r.disabled).toEqual({ applied: false, deviceId: null, reason: 'disabled', facingMode: 'environment' })
+  expect(r.same).toMatchObject({ applied: false, reason: 'noop', facingMode: 'user' })
+  expect(r.sameDevice).toBe(true)
+  expect(r).toMatchObject({ err: 'NotReadableError', rolledBack: true, live: 'live' })
+})
