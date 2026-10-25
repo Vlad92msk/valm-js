@@ -56,7 +56,8 @@ export class ScreenShareService extends TypedEventEmitter<ScreenShareEventMap> {
       this.emit('stateChanged', this.getState())
     } catch (error) {
       this.emit('error', { source: 'screenShare', action: 'start', error })
-      throw new Error('Screen share start error: ' + (error instanceof Error ? error.message : 'Unknown error'))
+      // Пробрасываем исходную ошибку как есть — потребителю нужно имя (NotAllowedError и т.п.)
+      throw error
     }
   }
 

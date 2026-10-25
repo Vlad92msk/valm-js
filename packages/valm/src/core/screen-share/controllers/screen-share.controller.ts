@@ -77,13 +77,8 @@ export class ScreenShareController {
   }
 
   start = async (): Promise<void> => {
-    try {
-      // Сервис сам прочитает конфигурацию
-      await this.screenShareService.startScreenShare()
-    } catch (error) {
-      this._notifyError({ source: 'screenShare', action: 'start', error })
-      throw error
-    }
+    // Сервис сам читает конфигурацию и сам эмитит 'error' (→ onError ровно один раз), затем бросает исходную ошибку
+    await this.screenShareService.startScreenShare()
   }
 
   stop = (): void => {

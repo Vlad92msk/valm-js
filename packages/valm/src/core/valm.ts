@@ -239,6 +239,7 @@ export class Valm extends TypedEventEmitter<ValmEvents> {
 
     this.cameraController.destroy()
     this.microphoneController.destroy()
+    this.audioOutputController.destroy()
     this.screenShareController.destroy()
     this.devicesController.destroy()
     this.configurationController.destroy()

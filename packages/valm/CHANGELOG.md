@@ -1,5 +1,16 @@
 # Changelog
 
+## 2.1.2 - 2026-10-25
+
+### Behaviour changes
+
+- `screenShareController.start()` rejects with the original error (e.g. `NotAllowedError` from `getDisplayMedia`) instead of a wrapped `Error('Screen share start error: …')`. Check `error.name` instead of parsing the message.
+
+### Fixed
+
+- A failed screen share `start()` called `onError` twice; now exactly once.
+- `valm.destroy()` did not destroy `audioOutputController`.
+
 ## 2.1.1 - 2026-10-13
 
 Transcription, found while adding live captions to a video-call client.

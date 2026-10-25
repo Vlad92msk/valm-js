@@ -94,3 +94,22 @@ test('checkCapabilities() (static) сообщает о поддержке getDis
   expect(typeof result.supported).toBe('boolean')
   expect(result.supported).toBe(true) // headless Chromium поддерживает
 })
+
+test('отказ getDisplayMedia: start() бросает исходную ошибку (имя), onError — ровно один раз', async ({ page }) => {
+  const result = await page.evaluate(async () => {
+    navigator.mediaDevices.getDisplayMedia = () => Promise.reject(new DOMException('denied', 'NotAllowedError'))
+    const errors: Array<{ action?: string; name?: string }> = []
+    window.__valm.screenShareController.onError((e: any) => errors.push({ action: e.action, name: e.error?.name }))
+    let thrown: { name?: string; message?: string } | null = null
+    try {
+      await window.__valm.screenShareController.start()
+    } catch (e: any) {
+      thrown = { name: e?.name, message: e?.message }
+    }
+    return { thrown, errors, isActive: window.__valm.screenShareController.state.isActive }
+  })
+
+  expect(result.thrown?.name).toBe('NotAllowedError') // имя исходной DOMException не теряется
+  expect(result.errors).toEqual([{ action: 'start', name: 'NotAllowedError' }]) // onError один раз
+  expect(result.isActive).toBe(false)
+})

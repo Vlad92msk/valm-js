@@ -166,3 +166,22 @@ test('destroy() во время активного screen-share останавл
   expect(result.threw).toBe(false)
   expect(result.liveAfter).toBe('ended') // display-трек заглушён при destroy
 })
+
+test('destroy() уничтожает audioOutputController', async ({ page }) => {
+  await gotoFixture(page)
+  const result = await page.evaluate(async () => {
+    window.__valm = new window.Valm.Valm({ video: { enabled: false }, audio: { enabled: false } })
+    const ctrl = window.__valm.audioOutputController
+    let destroyed = 0
+    const orig = ctrl.destroy.bind(ctrl)
+    ctrl.destroy = () => {
+      destroyed++
+      orig()
+    }
+    await window.__valm.destroy()
+    window.__valm = undefined
+    return { destroyed }
+  })
+
+  expect(result.destroyed).toBe(1)
+})
