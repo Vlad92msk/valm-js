@@ -7,7 +7,7 @@
   "scripts": {
     "build": "yarn workspace valm-js build",
     "dev:homepage": "yarn workspace homepage dev",
-    "typecheck": "yarn workspaces foreach -A run typecheck",
+    "typecheck": "yarn workspace valm-js typecheck && yarn workspace homepage typecheck",
     "deploy:homepage": "yarn workspace homepage build && firebase deploy --only hosting",
     "release:valm": "yarn workspace valm-js release",
     "release:valm:patch": "yarn workspace valm-js release:patch",

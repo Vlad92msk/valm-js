@@ -94,9 +94,15 @@ test('эффекты + запись: пишется обработанный (б
     } catch (e: any) {
       return { skipped: true, error: String(e?.message ?? e) }
     }
+    // enableBlur резолвится до первых обработанных кадров: сразу после него fps = 0, а запись
+    // 500 мс без кадров честно даёт пустой Blob. Ждём, пока пайплайн реально отдаёт кадры.
+    const warmDeadline = Date.now() + 10_000
+    while (window.__valm.effectsController.state.currentFps <= 0 && Date.now() < warmDeadline) {
+      await new Promise((r) => setTimeout(r, 100))
+    }
     const rec = window.__valm.recordingController
     await rec.startRecording({ autoSave: false, includeVideo: true, includeAudio: false })
-    await new Promise((r) => setTimeout(r, 500))
+    await new Promise((r) => setTimeout(r, 1000))
     const blob = await rec.stopRecording()
     return { skipped: false, size: blob.size, fps: window.__valm.effectsController.state.currentFps }
   })
