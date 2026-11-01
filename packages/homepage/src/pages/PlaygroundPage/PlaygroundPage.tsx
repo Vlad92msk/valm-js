@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Valm, DeviceDetector } from 'valm-js'
 import { EffectsPlugin, SegmentationProvider, FaceMeshProvider } from 'valm-js/effects'
+import { VoiceTranslatePlugin } from 'valm-js/voice-translate'
 import { VideoOff, TriangleAlert } from 'lucide-react'
 
 import { Tabs } from './elements/Tabs'
@@ -10,6 +11,7 @@ import ScreenShareTab from './elements/ScreenShareTab'
 import RecordingTab from './elements/RecordingTab'
 import EffectsTab from './elements/EffectsTab'
 import MoreTab from './elements/MoreTab'
+import VoiceTranslateTab from './elements/VoiceTranslateTab'
 import styles from './PlaygroundPage.module.scss'
 import { makeCn } from '../../utils/makeCn'
 
@@ -23,14 +25,17 @@ interface SubtitleEntry {
 function createValm(): Valm {
   const isMobile = DeviceDetector.isMobile()
   const mlProviderOptions = { minInterval: isMobile ? 100 : 33, cacheEnabled: true }
-  return new Valm().use(
-    new EffectsPlugin({
-      providers: {
-        segmentation: new SegmentationProvider(mlProviderOptions),
-        faceMesh: new FaceMeshProvider(mlProviderOptions),
-      },
-    }),
-  )
+  return new Valm()
+    .use(
+      new EffectsPlugin({
+        providers: {
+          segmentation: new SegmentationProvider(mlProviderOptions),
+          faceMesh: new FaceMeshProvider(mlProviderOptions),
+        },
+      }),
+    )
+    // Перевод голоса: плагин установлен, но выключен — включается только на вкладке «Перевод»
+    .use(new VoiceTranslatePlugin())
 }
 
 function formatDuration(ms: number): string {
@@ -140,6 +145,7 @@ const PlaygroundPage = () => {
         { id: 'screen', label: 'Screen', content: <ScreenShareTab media={media} onError={setError} /> },
         { id: 'recording', label: 'Recording', content: <RecordingTab media={media} onError={setError} /> },
         { id: 'effects', label: 'Effects', content: <EffectsTab media={media} onError={setError} /> },
+        { id: 'translate', label: t('playground.voice.tab'), content: <VoiceTranslateTab media={media} onError={setError} /> },
         { id: 'more', label: 'More', content: <MoreTab media={media} onError={setError} /> },
       ]
     : []

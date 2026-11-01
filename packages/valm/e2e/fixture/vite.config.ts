@@ -16,6 +16,7 @@ export default defineConfig({
   resolve: {
     alias: {
       '@valm/audio-effects': useSrc ? resolve('../../src/audio-effects/index.ts') : resolve('../../dist/audio-effects.js'),
+      '@valm/voice-translate': useSrc ? resolve('../../src/voice-translate/index.ts') : resolve('../../dist/voice-translate.js'),
       '@valm/effects': useSrc ? resolve('../../src/effects/index.ts') : resolve('../../dist/effects.js'),
       '@valm': useSrc ? resolve('../../src/index.ts') : resolve('../../dist/index.js'),
     },

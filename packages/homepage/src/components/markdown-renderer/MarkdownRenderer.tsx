@@ -1,5 +1,5 @@
-import { useState, useEffect, isValidElement, useMemo, type ReactNode } from 'react'
-import ReactMarkdown from 'react-markdown'
+import { useState, useEffect, isValidElement, useMemo, Children, type ReactNode } from 'react'
+import ReactMarkdown, { type Components } from 'react-markdown'
 import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import remarkGfm from 'remark-gfm'
@@ -125,7 +125,67 @@ const ShikiBlock = ({ lang, code }: ShikiBlockProps) => {
   )
 }
 
+// Вкладки в markdown (remark-directive):
+//   ::::tabs
+//   :::tab{title="Camera and microphone"}
+//   …
+//   :::
+//   ::::
+// Все панели остаются в HTML (неактивные — hidden), чтобы пререндер и поиск видели текст.
+interface DirectiveNode {
+  type: string
+  name?: string
+  attributes?: Record<string, string | null | undefined>
+  data?: Record<string, unknown>
+  children?: DirectiveNode[]
+}
+
+const remarkTabs = () => (tree: DirectiveNode) => {
+  const walk = (node: DirectiveNode) => {
+    if (node.type === 'containerDirective' && (node.name === 'tabs' || node.name === 'tab')) {
+      node.data = {
+        ...node.data,
+        hName: node.name === 'tabs' ? 'doc-tabs' : 'doc-tab',
+        hProperties: node.name === 'tab' ? { title: node.attributes?.title ?? '' } : {},
+      }
+    }
+    node.children?.forEach(walk)
+  }
+  walk(tree)
+}
+
+const DocTabs = ({ children }: { children?: ReactNode }) => {
+  const [active, setActive] = useState(0)
+  const tabs = Children.toArray(children).filter(isValidElement<{ title?: string; children?: ReactNode }>)
+
+  return (
+    <div className={cn('tabs')}>
+      <div className={cn('tabBar')} role="tablist">
+        {tabs.map((tab, index) => (
+          <button
+            key={index}
+            type="button"
+            role="tab"
+            aria-selected={index === active}
+            className={cn('tab', { active: index === active })}
+            onClick={() => setActive(index)}
+          >
+            {tab.props.title}
+          </button>
+        ))}
+      </div>
+      {tabs.map((tab, index) => (
+        <div key={index} role="tabpanel" className={cn('tabPanel')} hidden={index !== active}>
+          {tab.props.children}
+        </div>
+      ))}
+    </div>
+  )
+}
+
 const markdownComponents = {
+  'doc-tabs': DocTabs,
+  'doc-tab': ({ children }: { children?: ReactNode }) => <>{children}</>,
   a: DocLink,
   pre: ({ children }: { children?: ReactNode }) => {
     if (isValidElement<{ className?: string }>(children) && children.props.className?.startsWith('language-')) {
@@ -169,9 +229,9 @@ const MarkdownRenderer = ({ slug }: MarkdownRendererProps) => {
   return (
     <div className="markdown">
       <ReactMarkdown
-        remarkPlugins={[remarkGfm, remarkDirective]}
+        remarkPlugins={[remarkGfm, remarkDirective, remarkTabs]}
         rehypePlugins={[rehypeSlug]}
-        components={markdownComponents}
+        components={markdownComponents as Components}
       >
         {content}
       </ReactMarkdown>

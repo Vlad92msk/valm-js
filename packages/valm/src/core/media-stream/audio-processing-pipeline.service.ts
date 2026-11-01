@@ -1,5 +1,5 @@
-// Аудио-граф микрофона: source → gain → [ML worklet] → analyser → destination.
-// gain и визуализация — в ядре; ML-шумоподавление вставляется плагином как provider.
+// Аудио-граф микрофона: source → gain → [шумоподавление] → [перевод голоса] → analyser → destination.
+// gain и визуализация — в ядре; обработчики (слоты) вставляются плагинами как provider.
 
 export interface AudioVisualizationData {
   frequency: Uint8Array
@@ -8,11 +8,23 @@ export interface AudioVisualizationData {
 
 export type AudioDataCallback = (data: AudioVisualizationData) => void
 
-// Провайдер ML-обработки (реализуется в плагине valm-js/audio-effects)
-export interface IAudioNoiseSuppressionProvider {
+// Обработчик в аудио-графе микрофона (шумоподавление — valm-js/audio-effects, перевод — valm-js/voice-translate)
+export interface IAudioProcessorProvider {
+  // Создать узел в AudioContext графа. Вызывается при каждом запуске графа (новый трек → новый контекст)
   createNode(context: AudioContext): Promise<AudioNode> | AudioNode
+  // Граф остановлен (микрофон выключен, смена трека): узел больше не используется, провайдер остаётся
+  releaseNode?(): void
+  // Провайдер снят со слота или граф уничтожен
   destroy?(): void
 }
+
+// Провайдер ML-шумоподавления (реализуется в плагине valm-js/audio-effects)
+export type IAudioNoiseSuppressionProvider = IAudioProcessorProvider
+
+// Слоты обработчиков; порядок в графе — как в AUDIO_PROCESSOR_SLOTS
+export type AudioProcessorSlot = 'noise-suppression' | 'voice-translation'
+
+export const AUDIO_PROCESSOR_SLOTS: readonly AudioProcessorSlot[] = ['noise-suppression', 'voice-translation']
 
 export interface IAudioProcessingPipeline {
   isRunning(): boolean
@@ -25,6 +37,8 @@ export interface IAudioProcessingPipeline {
   getWaveformData(): Uint8Array
   onAudioData(cb: AudioDataCallback): VoidFunction
   setNoiseSuppressionProvider(provider: IAudioNoiseSuppressionProvider | null): Promise<void>
+  setProcessor(slot: AudioProcessorSlot, provider: IAudioProcessorProvider | null): Promise<void>
+  getProcessor(slot: AudioProcessorSlot): IAudioProcessorProvider | null
 }
 
 export class AudioProcessingPipelineService implements IAudioProcessingPipeline {
@@ -33,13 +47,13 @@ export class AudioProcessingPipelineService implements IAudioProcessingPipeline 
   private gainNode: GainNode | null = null
   private analyser: AnalyserNode | null = null
   private destination: MediaStreamAudioDestinationNode | null = null
-  private mlNode: AudioNode | null = null
+  private processorNodes = new Map<AudioProcessorSlot, AudioNode>()
 
   private inputTrack: MediaStreamTrack | null = null
   private running = false
 
   private gainValue = 1
-  private provider: IAudioNoiseSuppressionProvider | null = null
+  private providers = new Map<AudioProcessorSlot, IAudioProcessorProvider>()
 
   private frequencyData = new Uint8Array(0)
   private waveformData = new Uint8Array(0)
@@ -66,8 +80,9 @@ export class AudioProcessingPipelineService implements IAudioProcessingPipeline 
     this.frequencyData = new Uint8Array(this.analyser.frequencyBinCount)
     this.waveformData = new Uint8Array(this.analyser.fftSize)
 
-    if (this.provider) {
-      this.mlNode = await this.createProviderNode(this.provider, this.context)
+    for (const [slot, provider] of this.providers) {
+      const node = await this.createProviderNode(provider, this.context)
+      if (node) this.processorNodes.set(slot, node)
     }
 
     if (this.context.state === 'suspended') {
@@ -89,7 +104,10 @@ export class AudioProcessingPipelineService implements IAudioProcessingPipeline 
     }
 
     this.disconnectGraph()
-    this.mlNode = null
+    if (this.processorNodes.size > 0) {
+      this.processorNodes.clear()
+      this.providers.forEach((provider) => provider.releaseNode?.())
+    }
 
     if (this.context && this.context.state !== 'closed') {
       this.context.close().catch(() => {})
@@ -107,8 +125,8 @@ export class AudioProcessingPipelineService implements IAudioProcessingPipeline 
   // Полная очистка, включая провайдера
   destroy(): void {
     this.stop()
-    this.provider?.destroy?.()
-    this.provider = null
+    this.providers.forEach((provider) => provider.destroy?.())
+    this.providers.clear()
     this.audioDataCallbacks.clear()
   }
 
@@ -156,24 +174,40 @@ export class AudioProcessingPipelineService implements IAudioProcessingPipeline 
     }
   }
 
-  async setNoiseSuppressionProvider(provider: IAudioNoiseSuppressionProvider | null): Promise<void> {
-    if (this.provider === provider) return
+  setNoiseSuppressionProvider(provider: IAudioNoiseSuppressionProvider | null): Promise<void> {
+    return this.setProcessor('noise-suppression', provider)
+  }
 
-    this.provider?.destroy?.()
-    this.provider = provider
+  getProcessor(slot: AudioProcessorSlot): IAudioProcessorProvider | null {
+    return this.providers.get(slot) ?? null
+  }
+
+  // Поставить / снять обработчик слота. На работающем графе узлы переподключаются без смены выходного трека
+  async setProcessor(slot: AudioProcessorSlot, provider: IAudioProcessorProvider | null): Promise<void> {
+    const previous = this.providers.get(slot) ?? null
+    if (previous === provider) return
+
+    previous?.destroy?.()
+    if (provider) this.providers.set(slot, provider)
+    else this.providers.delete(slot)
 
     if (this.running && this.context) {
+      const context = this.context
+      const node = provider ? await this.createProviderNode(provider, context) : null
+      // Пока создавался узел, граф могли остановить или провайдера сменить
+      if (this.context !== context || (this.providers.get(slot) ?? null) !== provider) return
       this.disconnectGraph()
-      this.mlNode = provider ? await this.createProviderNode(provider, this.context) : null
+      if (node) this.processorNodes.set(slot, node)
+      else this.processorNodes.delete(slot)
       this.connectGraph()
     }
   }
 
-  private async createProviderNode(provider: IAudioNoiseSuppressionProvider, context: AudioContext): Promise<AudioNode | null> {
+  private async createProviderNode(provider: IAudioProcessorProvider, context: AudioContext): Promise<AudioNode | null> {
     try {
       return await provider.createNode(context)
     } catch {
-      // ML-провайдер не смог инициализироваться — граф работает без него
+      // Провайдер не смог инициализироваться — граф работает без него (о причине сообщает сам провайдер)
       return null
     }
   }
@@ -184,9 +218,11 @@ export class AudioProcessingPipelineService implements IAudioProcessingPipeline 
     this.source.connect(this.gainNode)
     let tail: AudioNode = this.gainNode
 
-    if (this.mlNode) {
-      tail.connect(this.mlNode)
-      tail = this.mlNode
+    for (const slot of AUDIO_PROCESSOR_SLOTS) {
+      const node = this.processorNodes.get(slot)
+      if (!node) continue
+      tail.connect(node)
+      tail = node
     }
 
     tail.connect(this.analyser)
@@ -196,7 +232,7 @@ export class AudioProcessingPipelineService implements IAudioProcessingPipeline 
   private disconnectGraph(): void {
     this.source?.disconnect()
     this.gainNode?.disconnect()
-    this.mlNode?.disconnect()
+    this.processorNodes.forEach((node) => node.disconnect())
     this.analyser?.disconnect()
   }
 

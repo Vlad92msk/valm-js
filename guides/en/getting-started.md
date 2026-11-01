@@ -8,6 +8,8 @@ yarn add valm-js
 
 ## Quick start
 
+::::tabs
+:::tab{title="Camera and microphone"}
 ```typescript
 import { Valm } from 'valm-js'
 
@@ -22,6 +24,36 @@ await media.initialize()
 const stream = media.cameraController.getStream()
 videoElement.srcObject = stream
 ```
+:::
+:::tab{title="Voice translation"}
+The speaker's voice is translated into the chosen language and the translation replaces the microphone in the
+published track. The user enters a Gemini key; it stays in the browser (get one at
+[aistudio.google.com/apikey](https://aistudio.google.com/apikey) → **Create API key**). Translation is off by
+default — enable it on a user action.
+
+```typescript
+import { Valm } from 'valm-js'
+import { VoiceTranslatePlugin, GeminiLiveTranslateTransport } from 'valm-js/voice-translate'
+
+const media = new Valm({ audio: { enabled: true } }).use(new VoiceTranslatePlugin())
+await media.initialize()
+
+const translate = media.voiceTranslateController
+await translate.enable({
+  transport: new GeminiLiveTranslateTransport({ auth: { type: 'api-key', apiKey: userKey } }),
+  targetLanguage: 'en', // the speaker's language is detected automatically
+})
+
+translate.onStateChange((s) => console.log(s.status))          // idle | connecting | active | error
+translate.onAny(({ type, payload }) => console.log(type, payload)) // every event
+
+// For a call — as usual: the microphone track already carries the translation
+const track = media.microphoneController.getTrack()
+```
+
+The key step by step, limits, errors, events and custom providers — [Voice Translate](./voice-translate.md).
+:::
+::::
 
 ## Configuration
 
@@ -98,6 +130,7 @@ Valm
 ├── transcriptionController — transcription
 ├── configurationController — configuration
 ├── effectsController       — video effects (requires EffectsPlugin)
+├── voiceTranslateController — voice translation (requires VoiceTranslatePlugin)
 └── permissions             — browser permissions
 ```
 

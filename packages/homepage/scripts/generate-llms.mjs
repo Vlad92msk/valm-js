@@ -154,10 +154,20 @@ function absolutizeLinks(body) {
     })
 }
 
+/**
+ * Вкладки сайта (`::::tabs` / `:::tab{title="…"}`, см. MarkdownRenderer) — в plain markdown:
+ * заголовок вкладки становится жирной строкой, служебные строки убираются.
+ */
+function flattenTabs(body) {
+    return body
+        .replace(/^:{3,}tab\{title="([^"]*)"\}\s*$/gm, '**$1**\n')
+        .replace(/^:{3,}(tabs)?\s*$/gm, '')
+}
+
 function readGuide(slug) {
     const file = path.join(GUIDES_DIR, `${slug}.md`)
     if (!fs.existsSync(file)) return null
-    return fs.readFileSync(file, 'utf8').trim()
+    return flattenTabs(fs.readFileSync(file, 'utf8')).trim()
 }
 
 function build() {

@@ -15,15 +15,22 @@ const valmPkg = JSON.parse(
 // чтобы список пререндеренных путей не разъезжался с навигацией.
 const docSlugs = DOCS_NAV.flatMap((g) => g.items.map((i) => i.slug))
 
+// valm-js берётся из исходников пакета в монорепо (packages/valm/src), а не из npm:
+// Playground показывает текущую версию библиотеки, включая ещё не опубликованное
+// (вкладка перевода голоса — valm-js/voice-translate). Те же пути — в tsconfig.json (paths).
+const valmSrc = (rel: string) => new URL(`../valm/src/${rel}`, import.meta.url).pathname
+
 export default defineConfig({
   define: {
     __VALM_VERSION__: JSON.stringify(valmPkg.version),
   },
   plugins: [react()],
   resolve: {
-    alias: {
-      '@guides': new URL('../../guides', import.meta.url).pathname,
-    },
+    alias: [
+      { find: '@guides', replacement: new URL('../../guides', import.meta.url).pathname },
+      { find: /^valm-js$/, replacement: valmSrc('index.ts') },
+      { find: /^valm-js\/(effects|audio-effects|voice-translate)$/, replacement: valmSrc('$1/index.ts') },
+    ],
   },
   ssgOptions: {
     entry: 'src/main.tsx',

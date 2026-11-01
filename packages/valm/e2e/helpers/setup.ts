@@ -5,12 +5,14 @@ import type { Page } from '@playwright/test'
 type ValmModule = typeof import('../../src')
 type EffectsModule = typeof import('../../src/effects')
 type AudioEffectsModule = typeof import('../../src/audio-effects')
+type VoiceTranslateModule = typeof import('../../src/voice-translate')
 
 declare global {
   interface Window {
     Valm: ValmModule
     Effects: EffectsModule
     AudioEffects: AudioEffectsModule
+    VoiceTranslate: VoiceTranslateModule
     valmReady: boolean
     // Единственный активный инстанс, которым оперируют спеки.
     __valm: any

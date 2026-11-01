@@ -6,12 +6,14 @@
 import * as Valm from '@valm'
 import * as Effects from '@valm/effects'
 import * as AudioEffects from '@valm/audio-effects'
+import * as VoiceTranslate from '@valm/voice-translate'
 
 declare global {
   interface Window {
     Valm: typeof import('../../src')
     Effects: typeof import('../../src/effects')
     AudioEffects: typeof import('../../src/audio-effects')
+    VoiceTranslate: typeof import('../../src/voice-translate')
     valmReady: boolean
   }
 }
@@ -19,4 +21,5 @@ declare global {
 window.Valm = Valm as unknown as typeof import('../../src')
 window.Effects = Effects as unknown as typeof import('../../src/effects')
 window.AudioEffects = AudioEffects as unknown as typeof import('../../src/audio-effects')
+window.VoiceTranslate = VoiceTranslate as unknown as typeof import('../../src/voice-translate')
 window.valmReady = true

@@ -8,6 +8,8 @@ yarn add valm-js
 
 ## Быстрый старт
 
+::::tabs
+:::tab{title="Камера и микрофон"}
 ```typescript
 import { Valm } from 'valm-js'
 
@@ -22,6 +24,35 @@ await media.initialize()
 const stream = media.cameraController.getStream()
 videoElement.srcObject = stream
 ```
+:::
+:::tab{title="Перевод голоса"}
+Голос говорящего переводится на выбранный язык, перевод заменяет микрофон в публикуемой дорожке. Ключ Gemini
+вводит пользователь: он остаётся в браузере (получить — [aistudio.google.com/apikey](https://aistudio.google.com/apikey) →
+**Create API key**). По умолчанию перевод выключен — включайте по действию пользователя.
+
+```typescript
+import { Valm } from 'valm-js'
+import { VoiceTranslatePlugin, GeminiLiveTranslateTransport } from 'valm-js/voice-translate'
+
+const media = new Valm({ audio: { enabled: true } }).use(new VoiceTranslatePlugin())
+await media.initialize()
+
+const translate = media.voiceTranslateController
+await translate.enable({
+  transport: new GeminiLiveTranslateTransport({ auth: { type: 'api-key', apiKey: userKey } }),
+  targetLanguage: 'en', // язык говорящего определяется сам
+})
+
+translate.onStateChange((s) => console.log(s.status))          // idle | connecting | active | error
+translate.onAny(({ type, payload }) => console.log(type, payload)) // все события
+
+// В звонок — как обычно: дорожка микрофона уже несёт перевод
+const track = media.microphoneController.getTrack()
+```
+
+Ключ шаг за шагом, лимиты, ошибки, события и свой провайдер — [Voice Translate](./voice-translate.md).
+:::
+::::
 
 ## Конфигурация
 
@@ -98,6 +129,7 @@ Valm
 ├── transcriptionController — транскрипция
 ├── configurationController — конфигурация
 ├── effectsController       — видеоэффекты (требует EffectsPlugin)
+├── voiceTranslateController — перевод голоса (требует VoiceTranslatePlugin)
 └── permissions             — разрешения браузера
 ```
 

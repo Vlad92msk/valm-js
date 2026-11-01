@@ -11,7 +11,11 @@
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "isolatedModules": true,
-    "noEmit": true
+    "noEmit": true,
+    "paths": {
+      "valm-js": ["../valm/src/index.ts"],
+      "valm-js/*": ["../valm/src/*/index.ts"]
+    }
   },
   "include": ["src", "vite.config.ts"],
   "exclude": ["node_modules", "dist"]

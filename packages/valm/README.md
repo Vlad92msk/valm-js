@@ -44,6 +44,7 @@ After calling `media.initialize()`, all controllers are available:
 | Devices | `media.devicesController` | List cameras/microphones, watch for changes |
 | Configuration | `media.configurationController` | Read/update/export/import config |
 | Effects | `media.effectsController` | Video effects (requires `EffectsPlugin`) |
+| Voice translation | `media.voiceTranslateController` | Translate the speaker's voice (requires `VoiceTranslatePlugin`) |
 | Permissions | `media.permissions` | Check camera/microphone permissions |
 
 ## Camera
@@ -244,6 +245,28 @@ class MySegmentationEffect extends BaseEffect<MyParams> {
 ```
 
 `EffectFeature.FACE_MESH` gives you `ctx.faceMesh.landmarks` — 478 normalized face points.
+
+## Voice translation
+
+The speaker's voice is translated into another language and replaces the microphone in the published track —
+for a call it is an ordinary outgoing track. The user brings their own key (Gemini Live Translate is the first
+provider); it stays in the browser. **Off by default:** nothing connects until `enable()`.
+
+```typescript
+import { VoiceTranslatePlugin, GeminiLiveTranslateTransport } from 'valm-js/voice-translate'
+
+media.use(new VoiceTranslatePlugin())
+const translate = media.voiceTranslateController
+
+await translate.enable({
+  transport: new GeminiLiveTranslateTransport({ auth: { type: 'api-key', apiKey: userKey } }),
+  targetLanguage: 'en',           // 78 languages; the speaker's language is detected
+})
+translate.onAny(({ type, payload }) => console.log(type, payload))  // state, transcripts, latency, errors…
+```
+
+A new service is one transport (`IVoiceTranslationTransport`), no core changes. Key, limits, errors, events:
+[Voice Translate guide](https://valm-js.web.app/docs/voice-translate).
 
 ## Plugin system
 

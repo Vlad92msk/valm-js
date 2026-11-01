@@ -1,4 +1,5 @@
 import { lazy, Suspense } from 'react'
+import { Navigate } from 'react-router-dom'
 import type { RouteRecord } from 'vite-react-ssg'
 
 import Layout from './components/layout/Layout'
@@ -30,6 +31,8 @@ export const routes: RouteRecord[] = [
           </Suspense>
         ),
       },
+      // Бывшая демо-страница спайка перевода голоса — теперь вкладка «Перевод» в Playground
+      { path: 'voice-translate', element: <Navigate to="/playground" replace /> },
     ],
   },
 ]

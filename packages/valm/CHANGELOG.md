@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+## 2.2.0 - 2026-11-01
+
+- **Voice translation** — new subpath `valm-js/voice-translate`. The speaker's voice is translated into another language and replaces the microphone in the published track, so a call sees an ordinary outgoing audio track. Off by default: until `voiceTranslateController.enable()` nothing connects, no audio is sent and the microphone track is untouched.
+  - `VoiceTranslatePlugin` + `media.voiceTranslateController`: `enable({ transport, targetLanguage, sameLanguageSpeech, originalVolume, errorFallback, pauseWhenMuted })`, `disable()`, `setTargetLanguage()` (reconnects the session), `setSameLanguageSpeech()`, `setOriginalVolume()`, `state`.
+  - Events for everything the service reports: `stateChanged`, `statusChanged`, `activityChanged`, `latencyChanged`, `usageChanged`, `transcript` (interim / per-chunk / final per turn), `languageDetected`, `translatedAudio`, `interrupted`, `turnComplete`, `sessionOpened`, `sessionClosed`, `reconnecting`, `inputPaused`, `error`, `providerEvent` (raw provider messages). `onAny()` delivers all of them.
+  - First provider: `GeminiLiveTranslateTransport` (Gemini Live Translate, 78 target languages, key directly or an ephemeral token; `geminiTokenFromApiKey`, `createGeminiEphemeralToken`). A new service is one `IVoiceTranslationTransport`; resampling, silence until ready, latency and transcripts are shared (`VoiceTranslator`).
+  - Speech already in the target language passes through by default (`sameLanguageSpeech: 'pass'`); `'silence'` is an option.
+- Core audio graph: ordered processor slots — `pipeline.setProcessor(slot, provider)` / `getProcessor(slot)` with slots `'noise-suppression'` and `'voice-translation'` (`IAudioProcessorProvider`, optional `releaseNode()` when the graph stops). `setNoiseSuppressionProvider()` is unchanged and uses the `'noise-suppression'` slot.
+
 ## 2.1.2 - 2026-10-25
 
 ### Behaviour changes

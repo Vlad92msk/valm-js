@@ -16,6 +16,7 @@ import { TypedEventEmitter } from './utils'
 import { handleIOSMediaError, isIOS } from './utils'
 import { ValmConfig, ValmConfiguration, LocalMediaState, MediaEvents } from './types'
 import type { EffectsController } from '../effects'
+import type { VoiceTranslateController } from '../voice-translate/voice-translate.controller'
 
 export interface ValmSnapshot {
   initializationState: 'idle' | 'initializing' | 'ready' | 'error'
@@ -104,6 +105,15 @@ export class Valm extends TypedEventEmitter<ValmEvents> {
       throw new Error('EffectsPlugin не установлен. Вызовите module.use(new EffectsPlugin()) для подключения видео-эффектов.')
     }
     return (plugin as unknown as { controller: EffectsController }).controller
+  }
+
+  // Доступен только после module.use(new VoiceTranslatePlugin()) из valm-js/voice-translate
+  get voiceTranslateController(): VoiceTranslateController {
+    const plugin = this.plugins.get('voice-translate')
+    if (!plugin || !('controller' in plugin)) {
+      throw new Error('VoiceTranslatePlugin не установлен. Вызовите module.use(new VoiceTranslatePlugin()) для перевода голоса.')
+    }
+    return (plugin as unknown as { controller: VoiceTranslateController }).controller
   }
 
   use<T extends IMediaPlugin>(plugin: T): this {

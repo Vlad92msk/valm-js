@@ -36,6 +36,7 @@ export const DOCS_NAV: DocsNavGroup[] = [
       { slug: 'effects', title: 'Effects' },
       { slug: 'audio-effects', title: 'Audio Effects' },
       { slug: 'custom-effects', title: 'Custom Effects' },
+      { slug: 'voice-translate', title: 'Voice Translate' },
     ],
   },
   {
