@@ -6,6 +6,7 @@ type ValmModule = typeof import('../../src')
 type EffectsModule = typeof import('../../src/effects')
 type AudioEffectsModule = typeof import('../../src/audio-effects')
 type VoiceTranslateModule = typeof import('../../src/voice-translate')
+type PcmCaptureModule = typeof import('../../src/pcm-capture')
 
 declare global {
   interface Window {
@@ -13,6 +14,7 @@ declare global {
     Effects: EffectsModule
     AudioEffects: AudioEffectsModule
     VoiceTranslate: VoiceTranslateModule
+    PcmCapture: PcmCaptureModule
     valmReady: boolean
     // Единственный активный инстанс, которым оперируют спеки.
     __valm: any

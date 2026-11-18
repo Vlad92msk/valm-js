@@ -4,6 +4,7 @@ import type { Valm } from 'valm-js'
 import styles from '../PlaygroundPage.module.scss'
 import { makeCn } from '../../../utils/makeCn'
 import HintRow from './Hint'
+import PcmCaptureSection from './PcmCaptureSection'
 
 const cn = makeCn('PlaygroundPage', styles)
 
@@ -156,6 +157,8 @@ const MoreTab = ({ media, onError }: MoreTabProps) => {
           </div>
         </div>
       )}
+
+      <PcmCaptureSection media={media} onError={onError} />
 
       {/* Config */}
       <div className={cn('controlGroup')}>

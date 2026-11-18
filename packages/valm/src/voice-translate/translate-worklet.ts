@@ -4,29 +4,27 @@
 // На выходе — тишина, пока очередь пуста, плюс оригинал × originalVolume (по умолчанию 0).
 // passthrough = true (ошибка сессии при errorFallback 'original') — на выходе исходный голос, очередь сброшена.
 // Модуль грузится из Blob URL: пакету не нужен отдельный файл в public/ приложения.
+// Захват — общий с PcmCapture (ValmPcmCapture из pcm-capture/capture-source).
+
+import { PCM_CAPTURE_SOURCE } from '../pcm-capture/capture-source'
 
 export const TRANSLATE_PROCESSOR_NAME = 'valm-voice-translate-processor'
 
 const WORKLET_SOURCE = `
+${PCM_CAPTURE_SOURCE}
+
 class VoiceTranslateProcessor extends AudioWorkletProcessor {
   constructor(options) {
     super()
     const o = options.processorOptions || {}
-    this.inputRate = o.inputRate || 16000
     this.outputRate = o.outputRate || 24000
-    this.chunkSize = Math.round(this.inputRate * (o.chunkMs || 100) / 1000)
     this.originalVolume = o.originalVolume || 0
     this.passthrough = false
 
     // захват
-    this.inStep = sampleRate / this.inputRate
-    this.inPos = 0
-    this.prev = 0
-    this.lp = 0
-    this.lpAlpha = Math.min(1, (2 * Math.PI * (this.inputRate * 0.45)) / sampleRate)
-    this.chunk = new Int16Array(this.chunkSize)
-    this.chunkFill = 0
-    this.sumSq = 0
+    this.capture = new ValmPcmCapture(o.inputRate || 16000, o.chunkMs || 100, (pcm, rms) => {
+      this.port.postMessage({ type: 'chunk', pcm, rms }, [pcm])
+    })
 
     // воспроизведение
     this.queue = []
@@ -70,41 +68,13 @@ class VoiceTranslateProcessor extends AudioWorkletProcessor {
     return null
   }
 
-  pushInput(x) {
-    this.chunk[this.chunkFill++] = Math.max(-32768, Math.min(32767, Math.round(x * 32767)))
-    this.sumSq += x * x
-    if (this.chunkFill === this.chunkSize) {
-      const rms = Math.sqrt(this.sumSq / this.chunkSize)
-      const out = this.chunk
-      this.port.postMessage({ type: 'chunk', pcm: out.buffer, rms }, [out.buffer])
-      this.chunk = new Int16Array(this.chunkSize)
-      this.chunkFill = 0
-      this.sumSq = 0
-    }
-  }
-
   process(inputs, outputs) {
     const input = inputs[0] && inputs[0][0]
     const output = outputs[0]
     const frames = output[0] ? output[0].length : 128
 
     // ── захват ──
-    // Без входа (Firefox отдаёт 0 каналов на «тихий» вход) пишем тишину: поток к сервису
-    // должен идти непрерывно — по паузе сервис понимает конец фразы, а мы меряем задержку.
-    {
-      const n = input ? input.length : frames
-      for (let i = 0; i < n; i++) {
-        this.lp += this.lpAlpha * ((input ? input[i] : 0) - this.lp)
-        const cur = this.lp
-        // выдаём сэмплы на позициях inPos в интервале [i-1, i]
-        while (this.inPos <= 1) {
-          this.pushInput(this.prev + (cur - this.prev) * this.inPos)
-          this.inPos += this.inStep
-        }
-        this.inPos -= 1
-        this.prev = cur
-      }
-    }
+    this.capture.process(input, frames)
 
     // ── воспроизведение ──
     const hadAudio = this.queue.length > 0

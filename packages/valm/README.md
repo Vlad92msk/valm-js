@@ -268,6 +268,22 @@ translate.onAny(({ type, payload }) => console.log(type, payload))  // state, tr
 A new service is one transport (`IVoiceTranslationTransport`), no core changes. Key, limits, errors, events:
 [Voice Translate guide](https://valm-js.web.app/docs/voice-translate).
 
+## PCM capture
+
+Any audio input — your microphone or a remote participant's track — as mono PCM16 chunks at the rate a
+streaming speech-to-text service wants, with RMS per chunk. Plays nothing.
+
+```typescript
+import { PcmCapture, pcm16ToBase64 } from 'valm-js/pcm-capture'
+
+const capture = await PcmCapture.create(audioContext, { sampleRate: 16000, chunkMs: 100 })
+source.connect(capture.node)
+capture.onChunk(({ pcm, rms }) => socket.send(pcm16ToBase64(pcm)))
+capture.setPaused(true)   // nothing is sent or buffered
+```
+
+Details: [PCM Capture guide](https://valm-js.web.app/docs/pcm-capture).
+
 ## Plugin system
 
 Extend `Valm` without touching the core:

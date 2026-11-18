@@ -46,6 +46,7 @@ export const DOCS_NAV: DocsNavGroup[] = [
       { slug: 'plugins', title: 'Plugins' },
       { slug: 'recording', title: 'Recording' },
       { slug: 'transcription', title: 'Transcription' },
+      { slug: 'pcm-capture', title: 'PCM Capture' },
       { slug: 'diagnostics', title: 'Diagnostics' },
       { slug: 'utilities', title: 'Utilities' },
     ],

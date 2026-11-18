@@ -12,6 +12,7 @@ export default defineConfig({
         effects: 'src/effects/index.ts',
         'audio-effects': 'src/audio-effects/index.ts',
         'voice-translate': 'src/voice-translate/index.ts',
+        'pcm-capture': 'src/pcm-capture/index.ts',
       },
       formats: ['es'],
     },

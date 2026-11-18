@@ -1,6 +1,6 @@
 {
   "name": "valm-js",
-  "version": "2.2.0",
+  "version": "2.3.0",
   "description": "Browser media stream manager — camera, microphone, screen share, recording, transcription, and video effects",
   "keywords": [
     "media",
@@ -16,6 +16,8 @@
     "mediapipe",
     "transcription",
     "voice-translation",
+    "pcm",
+    "speech-to-text",
     "gemini",
     "typescript"
   ],
@@ -50,6 +52,10 @@
     "./voice-translate": {
       "types": "./dist/voice-translate/index.d.ts",
       "import": "./dist/voice-translate.js"
+    },
+    "./pcm-capture": {
+      "types": "./dist/pcm-capture/index.d.ts",
+      "import": "./dist/pcm-capture.js"
     }
   },
   "files": [

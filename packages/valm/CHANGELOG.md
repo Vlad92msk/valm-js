@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## 2.3.0 - 2026-11-18
+
+- **PCM capture** — new subpath `valm-js/pcm-capture`. `PcmCapture` turns any audio input (your microphone, a remote participant's track, any `AudioNode`) into mono PCM16 chunks at a chosen rate with the RMS of each chunk, without playing anything. For streaming speech-to-text and voice-model services.
+  - `PcmCapture.create(ctx, { sampleRate = 16000, chunkMs = 100, paused = false })`, `node` (input only, no outputs), `onChunk(cb)` → unsubscribe, `setPaused()` (nothing is buffered while paused), `dispose()`.
+  - The worklet loads from a Blob URL once per context; no file in `public/`.
+  - `pcm16ToBase64` / `base64ToPcm16` are re-exported from the same subpath.
+- Voice translation uses the same capture source as `PcmCapture` (low-pass, resampling, chunking). No behaviour change.
+
 ## 2.2.0 - 2026-11-01
 
 - **Voice translation** — new subpath `valm-js/voice-translate`. The speaker's voice is translated into another language and replaces the microphone in the published track, so a call sees an ordinary outgoing audio track. Off by default: until `voiceTranslateController.enable()` nothing connects, no audio is sent and the microphone track is untouched.

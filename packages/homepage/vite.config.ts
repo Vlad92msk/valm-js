@@ -29,7 +29,7 @@ export default defineConfig({
     alias: [
       { find: '@guides', replacement: new URL('../../guides', import.meta.url).pathname },
       { find: /^valm-js$/, replacement: valmSrc('index.ts') },
-      { find: /^valm-js\/(effects|audio-effects|voice-translate)$/, replacement: valmSrc('$1/index.ts') },
+      { find: /^valm-js\/(effects|audio-effects|voice-translate|pcm-capture)$/, replacement: valmSrc('$1/index.ts') },
     ],
   },
   ssgOptions: {
