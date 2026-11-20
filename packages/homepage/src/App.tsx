@@ -10,6 +10,8 @@ import DocsPage from './pages/DocsPage/DocsPage'
 // в импортах — грузим лениво, чтобы этот код НЕ попадал в SSR-граф пререндера.
 // Страница вне пререндера (SPA-only), поэтому на сервере динамический импорт не бежит.
 const PlaygroundPage = lazy(() => import('./pages/PlaygroundPage/PlaygroundPage'))
+// Замер нагрузки видеоэффектов (T563): тоже SPA-only, вне пререндера и навигации
+const BenchPage = lazy(() => import('./pages/BenchPage/BenchPage'))
 
 // Роуты в формате data-router (массив), как требует vite-react-ssg. Корневой
 // layout-роут (Header + <Outlet/>) общий для всех страниц. `/docs` рендерит тот же
@@ -28,6 +30,14 @@ export const routes: RouteRecord[] = [
         element: (
           <Suspense fallback={null}>
             <PlaygroundPage />
+          </Suspense>
+        ),
+      },
+      {
+        path: 'bench',
+        element: (
+          <Suspense fallback={null}>
+            <BenchPage />
           </Suspense>
         ),
       },

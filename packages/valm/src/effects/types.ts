@@ -1,5 +1,5 @@
 import { FaceMeshWorkerResult } from './providers/face-mesh.client'
-import { SegmentationResult } from './providers/segmentation.client'
+import { SegmentationResult, SegmentationSource } from './providers/segmentation.client'
 
 type SegmentationWorkerResult = SegmentationResult
 
@@ -59,6 +59,9 @@ export interface IVideoEffect<TParams = unknown> {
 export interface IMLProvider<TConfig = unknown, TResult = unknown> {
   initialize(config?: TConfig): Promise<void>
   detect(imageData: ImageData, timestamp?: number): Promise<TResult>
+  // Необязательно: детекция прямо из canvas/VideoFrame без копирования в ImageData.
+  // Если есть — pipeline не читает пиксели кадра на основной поток
+  detectSource?(source: SegmentationSource, width: number, height: number, timestamp?: number): Promise<TResult>
   getLastResult(): TResult | null
   wouldReturnCache(): boolean
   isReady(): boolean

@@ -1,6 +1,6 @@
 import { EffectFeature, EffectType, FrameContext } from '../types'
 import { BaseEffect } from './base-effect'
-import { WebGLCompositor } from './webgl-compositor'
+import { GpuMaskCompositor, WebGLCompositor } from './webgl-compositor'
 
 export enum BackgroundFitMode {
   STRETCH = 'stretch',
@@ -71,6 +71,13 @@ export class VirtualBackgroundEffect extends BaseEffect<VirtualBackgroundParams>
   private lastHeight = 0
 
   private compositor: WebGLCompositor
+  // Композиция в контексте MediaPipe, когда маска пришла текстурой (segmentation.gpuMask)
+  private gpuCompositor: GpuMaskCompositor | null = null
+  private gpuCompositorFailed = false
+
+  // Фон перерисовывается только когда меняется картинка, параметры или размер
+  private imageVersion = 0
+  private drawnBackgroundKey: string | null = null
 
   constructor(params: Partial<VirtualBackgroundParams> = {}) {
     super({ ...DEFAULT_PARAMS, ...params })
@@ -91,10 +98,15 @@ export class VirtualBackgroundEffect extends BaseEffect<VirtualBackgroundParams>
   apply(ctx: FrameContext): void {
     if (!this.enabled) return
 
-    const { sourceCanvas, outputCtx, width, height, segmentationMask } = ctx
+    const { sourceCanvas, outputCtx, width, height } = ctx
+    const gpuMask = ctx.segmentation?.gpuMask
+    const gpuCompositor = gpuMask ? this.getGpuCompositor(gpuMask.gl) : null
+
+    // segmentationMask читается (с GPU) только если маску нельзя взять текстурой
+    const segmentationMask = gpuCompositor ? undefined : ctx.segmentationMask
 
     // Если нет маски — просто копируем
-    if (!segmentationMask) {
+    if (!gpuCompositor && !segmentationMask) {
       outputCtx.drawImage(sourceCanvas, 0, 0)
       return
     }
@@ -103,17 +115,42 @@ export class VirtualBackgroundEffect extends BaseEffect<VirtualBackgroundParams>
     this.ensureCanvases(width, height)
     if (!this.backgroundCtx || !this.backgroundCanvas) return
 
-    // 1. Рисуем фон (изображение или цвет)
-    this.drawBackground(width, height)
+    // 1. Рисуем фон (изображение или цвет) — только если он изменился
+    const backgroundKey = this.getBackgroundKey(width, height)
+    if (backgroundKey !== this.drawnBackgroundKey) {
+      this.drawBackground(width, height)
+      this.drawnBackgroundKey = backgroundKey
+    }
 
-    // 2. WebGL compositing
+    const threshold = this.params.edgeSmoothing ? this.params.smoothingThreshold : 0.004
+    const edgeWidth = this.params.edgeSmoothing ? this.params.edgeBlur * 0.01 : 0.001
+
+    // 2. WebGL compositing: маска на GPU — без чтения на CPU, фон не перезагружается без изменений
+    if (gpuCompositor && gpuMask) {
+      gpuCompositor.composite({
+        source: sourceCanvas,
+        background: this.backgroundCanvas,
+        backgroundKey,
+        maskTexture: gpuMask.texture,
+        width,
+        height,
+        threshold,
+        edgeWidth,
+        invertMask: false,
+      })
+      gpuCompositor.drawTo(outputCtx)
+      return
+    }
+
+    if (!segmentationMask) return
+
     this.compositor.composite({
       source: sourceCanvas,
       background: this.backgroundCanvas,
       mask: segmentationMask,
       width, height,
-      threshold: this.params.edgeSmoothing ? this.params.smoothingThreshold : 0.004,
-      edgeWidth: this.params.edgeSmoothing ? (this.params.edgeBlur * 0.01) : 0.001,
+      threshold,
+      edgeWidth,
       invertMask: false,
     })
     this.compositor.drawTo(outputCtx)
@@ -121,6 +158,8 @@ export class VirtualBackgroundEffect extends BaseEffect<VirtualBackgroundParams>
 
   dispose(): void {
     this.compositor.dispose()
+    this.gpuCompositor?.dispose()
+    this.gpuCompositor = null
 
     if (this.backgroundCanvas) {
       this.backgroundCanvas.width = 0
@@ -140,10 +179,37 @@ export class VirtualBackgroundEffect extends BaseEffect<VirtualBackgroundParams>
     }
   }
 
+  private getGpuCompositor(gl: WebGL2RenderingContext): GpuMaskCompositor | null {
+    if (this.gpuCompositor?.isFor(gl)) return this.gpuCompositor
+    if (this.gpuCompositorFailed) return null
+
+    this.gpuCompositor?.dispose()
+    this.gpuCompositor = null
+
+    try {
+      this.gpuCompositor = new GpuMaskCompositor(gl)
+    } catch (error) {
+      console.warn('[VirtualBackgroundEffect] GPU compositor unavailable, fallback to CPU mask:', error)
+      this.gpuCompositorFailed = true
+    }
+
+    return this.gpuCompositor
+  }
+
+  // Всё, от чего зависит картинка фона: при смене ключа фон перерисовывается
+  private getBackgroundKey(width: number, height: number): string {
+    const hasImage = !!this.backgroundImage && !this.imageLoadError
+    const { fitMode, backgroundColor } = this.params
+    return `${width}x${height}|${hasImage ? this.imageVersion : 'color'}|${fitMode}|${backgroundColor}`
+  }
+
   private ensureCanvases(width: number, height: number): void {
     if (this.lastWidth === width && this.lastHeight === height) {
       return
     }
+
+    // Новый размер canvas стирает фон — перерисовать
+    this.drawnBackgroundKey = null
 
     // Background canvas
     if (!this.backgroundCanvas) {
@@ -175,6 +241,7 @@ export class VirtualBackgroundEffect extends BaseEffect<VirtualBackgroundParams>
 
       img.onload = () => {
         this.backgroundImage = img
+        this.imageVersion++
         this.imageLoading = false
         this.imageLoadError = false
 

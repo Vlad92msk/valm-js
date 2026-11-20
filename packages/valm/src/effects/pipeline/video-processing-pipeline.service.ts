@@ -67,9 +67,17 @@ export class VideoProcessingPipelineService implements IVideoProcessingPipeline 
   private workCanvas: HTMLCanvasElement | null = null
   private workCtx: CanvasRenderingContext2D | null = null
 
-  // ML-масштабирование: промежуточный canvas для уменьшенного разрешения ML-детекции
+  // ML-масштабирование: промежуточный canvas для уменьшенного разрешения ML-детекции.
+  // GPU-canvas: кадр для провайдеров, которые берут его напрямую (detectSource)
   private mlCanvas: HTMLCanvasElement | null = null
   private mlCtx: CanvasRenderingContext2D | null = null
+  // CPU-canvas (willReadFrequently): только для getImageData — кастомные провайдеры и FaceMesh
+  private readCanvas: HTMLCanvasElement | null = null
+  private readCtx: CanvasRenderingContext2D | null = null
+
+  // Результат сегментации под размер кадра (FrameContext): маска читается лениво, раз на результат ML
+  private frameSegmentationFor: SegmentationResult | null = null
+  private frameSegmentation: SegmentationResult | null = null
 
   // State
   private running = false
@@ -426,40 +434,97 @@ export class VideoProcessingPipelineService implements IVideoProcessingPipeline 
     // 3. ML-детекция: полная каждый N-й кадр, кэш на остальных
     const runML = this.mlFrameCounter++ % this.mlFrameSkip === 0
     const shouldSkipCapture = runML && this.providers.wouldReturnCache()
-    const mlResults = runML && !shouldSkipCapture
-      ? await this.providers.detect(this.captureImageData(), timestamp)
-      : this.providers.getCachedResults()
-
-    let segmentation = mlResults.segmentation
-
-    // Если ML работал на уменьшенном разрешении — масштабируем маску обратно
-    if (segmentation && this.mlResolutionScale < 1.0) {
-      segmentation = this.upscaleSegmentation(segmentation, width, height)
+    let mlResults
+    if (!runML || shouldSkipCapture) {
+      mlResults = this.providers.getCachedResults()
+    } else if (this.providers.canDetectFromSource()) {
+      // Кадр уходит в модель как есть (GPU → GPU), без getImageData
+      const mlSource = this.getMlSource()
+      mlResults = await this.providers.detectFromSource(mlSource, mlSource.width, mlSource.height, timestamp)
+    } else {
+      mlResults = await this.providers.detect(this.captureImageData(), timestamp)
     }
 
-    const segmentationMask = segmentation?.maskData
+    const segmentation = mlResults.segmentation ? this.toFrameSegmentation(mlResults.segmentation, width, height) : null
 
     // 4. Применяем цепочку эффектов
-    this.applyEffectsChain(enabledEffects, outputCanvas, outputCtx, segmentation, segmentationMask, mlResults.faceMesh, timestamp)
+    this.applyEffectsChain(enabledEffects, outputCanvas, outputCtx, segmentation, mlResults.faceMesh, timestamp)
     this.frameOutput.requestFrame()
   }
 
-  private captureImageData(): ImageData {
-    // При mlResolutionScale < 1.0 масштабируем вниз через ML canvas
-    if (this.mlResolutionScale < 1.0 && this.mlCanvas && this.mlCtx && this.sourceCanvas) {
-      const mlWidth = this.mlCanvas.width
-      const mlHeight = this.mlCanvas.height
-
-      this.mlCtx.drawImage(this.sourceCanvas, 0, 0, mlWidth, mlHeight)
-      return this.mlCtx.getImageData(0, 0, mlWidth, mlHeight)
+  // Кадр для detectSource: source-canvas или его уменьшенная копия (тоже на GPU)
+  private getMlSource(): HTMLCanvasElement {
+    if (!this.sourceCanvas) {
+      throw new Error('Source canvas not initialized')
     }
 
-    if (!this.sourceCtx) {
+    if (this.mlResolutionScale < 1.0 && this.mlCanvas && this.mlCtx) {
+      this.mlCtx.drawImage(this.sourceCanvas, 0, 0, this.mlCanvas.width, this.mlCanvas.height)
+      return this.mlCanvas
+    }
+
+    return this.sourceCanvas
+  }
+
+  private captureImageData(): ImageData {
+    if (!this.sourceCanvas) {
       throw new Error('Source context not initialized')
     }
 
+    // Читаем через отдельный CPU-canvas (с учётом mlResolutionScale): source-canvas живёт на GPU
     const { width, height } = this.config
-    return this.sourceCtx.getImageData(0, 0, width, height)
+    const scale = Math.min(1, this.mlResolutionScale)
+    const readWidth = Math.max(1, Math.round(width * scale))
+    const readHeight = Math.max(1, Math.round(height * scale))
+
+    if (!this.readCanvas || !this.readCtx || this.readCanvas.width !== readWidth || this.readCanvas.height !== readHeight) {
+      this.disposeReadCanvas()
+      this.readCanvas = document.createElement('canvas')
+      this.readCanvas.width = readWidth
+      this.readCanvas.height = readHeight
+      this.readCtx = this.readCanvas.getContext('2d', {
+        willReadFrequently: true,
+        alpha: false,
+      })
+    }
+
+    if (!this.readCtx) {
+      throw new Error('Read context not initialized')
+    }
+
+    this.readCtx.drawImage(this.sourceCanvas, 0, 0, readWidth, readHeight)
+    return this.readCtx.getImageData(0, 0, readWidth, readHeight)
+  }
+
+  // Сегментация в размере кадра. Если ML шёл на уменьшенном кадре — maskData масштабируется
+  // только при первом чтении (встроенные эффекты на GPU-пути берут gpuMask и её не читают)
+  private toFrameSegmentation(segmentation: SegmentationResult, width: number, height: number): SegmentationResult {
+    if (segmentation.width === width && segmentation.height === height) return segmentation
+    if (this.frameSegmentationFor === segmentation && this.frameSegmentation?.width === width && this.frameSegmentation.height === height) {
+      return this.frameSegmentation
+    }
+
+    let upscaled: Uint8Array | null = null
+    const frameSegmentation: SegmentationResult = {
+      width,
+      height,
+      timestamp: segmentation.timestamp,
+      gpuMask: segmentation.gpuMask,
+      maskData: undefined as unknown as Uint8Array,
+    }
+    Object.defineProperty(frameSegmentation, 'maskData', {
+      enumerable: true,
+      configurable: true,
+      get: () => {
+        if (!upscaled) upscaled = this.upscaleSegmentation(segmentation, width, height).maskData
+        return upscaled
+      },
+    })
+    if (!frameSegmentation.gpuMask) delete frameSegmentation.gpuMask
+
+    this.frameSegmentationFor = segmentation
+    this.frameSegmentation = frameSegmentation
+    return frameSegmentation
   }
 
   private applyEffectsChain(
@@ -467,7 +532,6 @@ export class VideoProcessingPipelineService implements IVideoProcessingPipeline 
     outputCanvas: HTMLCanvasElement,
     outputCtx: CanvasRenderingContext2D,
     segmentation: SegmentationResult | null,
-    segmentationMask: Uint8Array | undefined,
     faceMesh: FaceMeshWorkerResult | null,
     timestamp: number,
   ): void {
@@ -513,8 +577,17 @@ export class VideoProcessingPipelineService implements IVideoProcessingPipeline 
         height,
         timestamp,
         segmentation: segmentation || undefined,
-        segmentationMask,
+        segmentationMask: undefined,
         faceMesh: faceMesh || undefined,
+      }
+
+      // Маска в Uint8Array — лениво: встроенные эффекты на GPU-пути её не читают
+      if (segmentation) {
+        Object.defineProperty(ctx, 'segmentationMask', {
+          enumerable: true,
+          configurable: true,
+          get: () => segmentation.maskData,
+        })
       }
 
       // Применяем эффект
@@ -575,8 +648,9 @@ export class VideoProcessingPipelineService implements IVideoProcessingPipeline 
     this.sourceCanvas = document.createElement('canvas')
     this.sourceCanvas.width = width
     this.sourceCanvas.height = height
+    // Без willReadFrequently: canvas на GPU, кадр камеры копируется GPU → GPU.
+    // Пиксели на CPU читаются только через readCanvas (captureImageData)
     this.sourceCtx = this.sourceCanvas.getContext('2d', {
-      willReadFrequently: true,
       alpha: false,
     })
 
@@ -585,7 +659,6 @@ export class VideoProcessingPipelineService implements IVideoProcessingPipeline 
     this.workCanvas.width = width
     this.workCanvas.height = height
     this.workCtx = this.workCanvas.getContext('2d', {
-      willReadFrequently: true,
       alpha: false,
     })
 
@@ -617,7 +690,6 @@ export class VideoProcessingPipelineService implements IVideoProcessingPipeline 
     this.mlCanvas.width = mlWidth
     this.mlCanvas.height = mlHeight
     this.mlCtx = this.mlCanvas.getContext('2d', {
-      willReadFrequently: true,
       alpha: false,
     })
   }
@@ -696,6 +768,15 @@ export class VideoProcessingPipelineService implements IVideoProcessingPipeline 
     }
   }
 
+  private disposeReadCanvas(): void {
+    if (this.readCanvas) {
+      this.readCanvas.width = 0
+      this.readCanvas.height = 0
+      this.readCanvas = null
+    }
+    this.readCtx = null
+  }
+
   private disposeMlCanvas(): void {
     if (this.mlCanvas) {
       this.mlCanvas.width = 0
@@ -721,5 +802,8 @@ export class VideoProcessingPipelineService implements IVideoProcessingPipeline 
     this.workCtx = null
 
     this.disposeMlCanvas()
+    this.disposeReadCanvas()
+    this.frameSegmentationFor = null
+    this.frameSegmentation = null
   }
 }

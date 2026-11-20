@@ -1,4 +1,4 @@
-import { SegmentationConfig, SegmentationResult, SegmentationService } from './segmentation.client'
+import { SegmentationConfig, SegmentationResult, SegmentationService, SegmentationSource } from './segmentation.client'
 import { BaseMLProvider, IBaseMLProviderOptions } from './baseML.provider'
 
 export interface SegmentationProviderOptions extends IBaseMLProviderOptions {
@@ -20,6 +20,11 @@ export class SegmentationProvider extends BaseMLProvider<SegmentationConfig, Seg
 
   protected async onDetect(imageData: ImageData, timestamp: number): Promise<SegmentationResult> {
     return this.service.segment(imageData, timestamp)
+  }
+
+  // Кадр прямо из canvas/VideoFrame — без ImageData (см. MLProvidersManager.detectFromSource)
+  detectSource(source: SegmentationSource, width: number, height: number, timestamp = performance.now()): Promise<SegmentationResult> {
+    return this.runDetection(timestamp, async () => this.service.segmentSource(source, width, height, timestamp))
   }
 
   protected async onDispose(): Promise<void> {

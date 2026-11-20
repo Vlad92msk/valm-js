@@ -27,8 +27,13 @@ export abstract class BaseMLProvider<TConfig, TResult> implements IMLProvider<TC
   }
 
   async detect(imageData: ImageData, timestamp = performance.now()): Promise<TResult> {
+    return this.runDetection(timestamp, () => this.onDetect(imageData, timestamp))
+  }
+
+  // Общая обвязка детекции: throttle + кэш + anti-parallel. Наследник передаёт сам вызов модели
+  protected runDetection(timestamp: number, run: () => Promise<TResult>): Promise<TResult> {
     if (!this.initialized) {
-      throw new Error('Provider not initialized')
+      return Promise.reject(new Error('Provider not initialized'))
     }
 
     const now = timestamp
@@ -37,7 +42,7 @@ export abstract class BaseMLProvider<TConfig, TResult> implements IMLProvider<TC
     // Throttle: возвращаем кэш
     if (this.cacheEnabled && delta < this.minInterval) {
       if (this.lastResult !== null) {
-        return this.lastResult
+        return Promise.resolve(this.lastResult)
       }
       // если нет lastResult — просто продолжаем (а не бросаем исключение)
     }
@@ -50,7 +55,7 @@ export abstract class BaseMLProvider<TConfig, TResult> implements IMLProvider<TC
     this.lastCallTime = now
 
     // Детекция
-    this.pendingPromise = this.onDetect(imageData, timestamp)
+    this.pendingPromise = run()
       .then((res) => {
         this.lastResult = res
         return res

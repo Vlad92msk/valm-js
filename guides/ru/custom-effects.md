@@ -98,6 +98,7 @@ interface FrameContext {
     width: number         // ширина маски (может отличаться от размера кадра)
     height: number        // высота маски
     timestamp: number
+    gpuMask?: { gl: WebGL2RenderingContext; texture: WebGLTexture } // маска текстурой (встроенный провайдер), см. ниже
   }
   segmentationMask?: Uint8Array  // maskData, масштабированная под размер кадра (width * height пикселей)
 
@@ -116,6 +117,8 @@ interface FaceLandmark {
   z?: number  // глубина (не всегда доступна)
 }
 ```
+
+> **Маска на GPU.** Встроенный `SegmentationProvider` по умолчанию оставляет маску текстурой WebGL (`segmentation.gpuMask`), и встроенные размытие и замена фона рисуются в том же WebGL-контексте — без чтения маски на CPU. `segmentationMask` и `segmentation.maskData` при этом считаются лениво, только когда эффект к ним обращается (это чтение с GPU — заметно дороже). Кастомному эффекту, которому нужен массив, ничего менять не нужно.
 
 ---
 
@@ -278,6 +281,7 @@ const provider = new SegmentationProvider({
     wasmPath: '/mediapipe/wasm',                            // путь к папке с WASM файлами MediaPipe
     modelPath: '/mediapipe/models/selfie_segmenter.tflite', // путь к .tflite модели
     disableOnMobile: false,                                 // принудительно выключить на мобильных
+    gpuMask: true,                                          // маска остаётся на GPU (по умолчанию true); false — старый путь
   },
   minInterval: 33,    // throttle: не чаще чем раз в 33мс (~30 ML-кадров в секунду)
   cacheEnabled: true, // возвращать предыдущий результат при throttle
@@ -379,6 +383,7 @@ class MyMLProvider extends BaseMLProvider<MyMLConfig, MyMLResult> {
 |-------|-----|----------|
 | `initialize(config?)` | `(TConfig?) => Promise<void>` | Инициализация модели — защита от повторного вызова |
 | `detect(imageData, ts?)` | `(ImageData, number?) => Promise<TResult>` | Инференс с throttle и кэшем |
+| `detectSource?(source, w, h, ts?)` | `(canvas \| VideoFrame \| …, number, number, number?) => Promise<TResult>` | Необязательно. Кадр прямо из canvas, без `ImageData`: если провайдер сегментации его реализует (и FaceMesh не нужен), pipeline не читает пиксели кадра на основной поток. Есть у `SegmentationProvider` |
 | `getLastResult()` | `() => TResult \| null` | Последний кэшированный результат |
 | `isReady()` | `() => boolean` | Готов ли провайдер к детекции |
 | `clearCache()` | `() => void` | Очистить кэш результатов |

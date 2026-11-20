@@ -1,6 +1,11 @@
 # Changelog
 
-## Unreleased
+## 2.4.0 - 2026-11-20
+
+- **Video effects take far less of the main thread.** The segmentation mask stays on the GPU: the frame goes to MediaPipe straight from a GPU canvas (no `getImageData`/`putImageData`), the mask is a WebGL texture in MediaPipe's own context, and blur and virtual background composite there. Background blur is a WebGL Gaussian instead of the 2D `filter: blur()`; the virtual background image is redrawn and uploaded only when it changes. Looks the same. Measured on M1 Pro, Chromium, 1280×720: main-thread CPU with blur or background replacement ~33% → ~10% of a core (without effects ~2%); with 4× CPU throttling 56% → 12–16%, output stays at 30 fps.
+  - `SegmentationConfig.gpuMask` (default `true`); `false` restores the old path. If WebGL2 or the shared context is unavailable, the old path is used automatically.
+  - `SegmentationResult.gpuMask?: { gl, texture }` — new optional field. With it, `maskData` is computed lazily on first access; `ctx.segmentationMask` is lazy as well. Custom effects reading them keep working.
+  - `IMLProvider.detectSource?(source, width, height, timestamp?)` — optional; `SegmentationProvider` implements it. Custom providers without it get `ImageData` as before.
 
 ## 2.3.0 - 2026-11-18
 

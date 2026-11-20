@@ -98,6 +98,7 @@ interface FrameContext {
     width: number         // mask width (may differ from the frame size)
     height: number        // mask height
     timestamp: number
+    gpuMask?: { gl: WebGL2RenderingContext; texture: WebGLTexture } // mask as a texture (built-in provider), see below
   }
   segmentationMask?: Uint8Array  // maskData scaled to the frame size (width * height pixels)
 
@@ -116,6 +117,8 @@ interface FaceLandmark {
   z?: number  // depth (not always available)
 }
 ```
+
+> **Mask on the GPU.** By default the built-in `SegmentationProvider` keeps the mask as a WebGL texture (`segmentation.gpuMask`), and the built-in blur and background replacement draw in the same WebGL context, never reading the mask back to the CPU. `segmentationMask` and `segmentation.maskData` are then computed lazily, only when an effect reads them (a GPU readback, noticeably more expensive). A custom effect that needs the array keeps working unchanged.
 
 ---
 
@@ -278,6 +281,7 @@ const provider = new SegmentationProvider({
     wasmPath: '/mediapipe/wasm',                            // path to the folder with MediaPipe WASM files
     modelPath: '/mediapipe/models/selfie_segmenter.tflite', // path to the .tflite model
     disableOnMobile: false,                                 // force off on mobile
+    gpuMask: true,                                          // keep the mask on the GPU (default true); false — legacy path
   },
   minInterval: 33,    // throttle: no more than once every 33ms (~30 ML frames per second)
   cacheEnabled: true, // return the previous result while throttled
@@ -379,6 +383,7 @@ With a chain of several effects, the pipeline alternates writing between two can
 |--------|------|-------------|
 | `initialize(config?)` | `(TConfig?) => Promise<void>` | Model initialization — guarded against repeated calls |
 | `detect(imageData, ts?)` | `(ImageData, number?) => Promise<TResult>` | Inference with throttling and cache |
+| `detectSource?(source, w, h, ts?)` | `(canvas \| VideoFrame \| …, number, number, number?) => Promise<TResult>` | Optional. Takes the frame straight from a canvas, no `ImageData`: if the segmentation provider implements it (and FaceMesh is not needed), the pipeline never reads frame pixels on the main thread. `SegmentationProvider` has it |
 | `getLastResult()` | `() => TResult \| null` | Last cached result |
 | `isReady()` | `() => boolean` | Whether the provider is ready to detect |
 | `clearCache()` | `() => void` | Clear the result cache |

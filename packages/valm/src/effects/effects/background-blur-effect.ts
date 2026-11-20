@@ -1,7 +1,7 @@
 import { DeviceDetector } from '../../core'
 import { EffectFeature, EffectType, FrameContext } from '../types'
 import { BaseEffect } from './base-effect'
-import { WebGLCompositor } from './webgl-compositor'
+import { GpuMaskCompositor, WebGLCompositor } from './webgl-compositor'
 
 export enum BlurMode {
   BACKGROUND = 'background',
@@ -65,6 +65,9 @@ export class BackgroundBlurEffect extends BaseEffect<BackgroundBlurParams> {
   private maxBlurRadius = 20
 
   private compositor: WebGLCompositor
+  // Композиция в контексте MediaPipe, когда маска пришла текстурой (segmentation.gpuMask)
+  private gpuCompositor: GpuMaskCompositor | null = null
+  private gpuCompositorFailed = false
 
   constructor(params: Partial<BackgroundBlurParams> = {}) {
     super({ ...DEFAULT_PARAMS, ...params })
@@ -79,10 +82,36 @@ export class BackgroundBlurEffect extends BaseEffect<BackgroundBlurParams> {
   apply(ctx: FrameContext): void {
     if (!this.enabled) return
 
-    const { sourceCanvas, outputCtx, width, height, segmentationMask } = ctx
+    const { sourceCanvas, outputCtx, width, height } = ctx
+    const gpuMask = ctx.segmentation?.gpuMask
+    const gpuCompositor = gpuMask ? this.getGpuCompositor(gpuMask.gl) : null
 
-    if (!segmentationMask) {
+    // segmentationMask читается (с GPU) только если маску нельзя взять текстурой
+    const segmentationMask = gpuCompositor ? undefined : ctx.segmentationMask
+
+    if (!gpuCompositor && !segmentationMask) {
       outputCtx.drawImage(sourceCanvas, 0, 0)
+      return
+    }
+
+    const threshold = this.params.edgeSmoothing ? this.params.smoothingThreshold : 0.004
+    const edgeWidth = this.params.edgeSmoothing ? 0.01 : 0.001
+    const invertMask = this.params.mode !== BlurMode.BACKGROUND
+    const blurRadius = Math.round(this.params.intensity * this.maxBlurRadius)
+
+    // Маска на GPU: размытие и композиция целиком в WebGL, без 2D-фильтра и чтения маски
+    if (gpuCompositor && gpuMask) {
+      gpuCompositor.compositeBlur({
+        source: sourceCanvas,
+        maskTexture: gpuMask.texture,
+        width,
+        height,
+        blurRadius,
+        threshold,
+        edgeWidth,
+        invertMask,
+      })
+      gpuCompositor.drawTo(outputCtx)
       return
     }
 
@@ -97,20 +126,24 @@ export class BackgroundBlurEffect extends BaseEffect<BackgroundBlurParams> {
     }
 
     // 2. WebGL compositing
+    if (!segmentationMask) return
+
     this.compositor.composite({
       source: sourceCanvas,
       background: this.blurCanvas,
       mask: segmentationMask,
       width, height,
-      threshold: this.params.edgeSmoothing ? this.params.smoothingThreshold : 0.004,
-      edgeWidth: this.params.edgeSmoothing ? 0.01 : 0.001,
-      invertMask: this.params.mode !== BlurMode.BACKGROUND,
+      threshold,
+      edgeWidth,
+      invertMask,
     })
     this.compositor.drawTo(outputCtx)
   }
 
   dispose(): void {
     this.compositor.dispose()
+    this.gpuCompositor?.dispose()
+    this.gpuCompositor = null
 
     if (this.blurCanvas) {
       this.blurCanvas.width = 0
@@ -126,6 +159,23 @@ export class BackgroundBlurEffect extends BaseEffect<BackgroundBlurParams> {
 
     this.blurCtx = null
     this.tempCtx = null
+  }
+
+  private getGpuCompositor(gl: WebGL2RenderingContext): GpuMaskCompositor | null {
+    if (this.gpuCompositor?.isFor(gl)) return this.gpuCompositor
+    if (this.gpuCompositorFailed) return null
+
+    this.gpuCompositor?.dispose()
+    this.gpuCompositor = null
+
+    try {
+      this.gpuCompositor = new GpuMaskCompositor(gl)
+    } catch (error) {
+      console.warn('[BackgroundBlurEffect] GPU compositor unavailable, fallback to CPU mask:', error)
+      this.gpuCompositorFailed = true
+    }
+
+    return this.gpuCompositor
   }
 
   // CSS filter (десктоп — быстрее)

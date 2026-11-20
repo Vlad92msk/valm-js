@@ -8,15 +8,43 @@ export interface SegmentationConfig {
   wasmPath?: string
   modelPath?: string
   disableOnMobile?: boolean
+  // Маска остаётся текстурой WebGL, композиция идёт в том же контексте — без чтения маски
+  // с GPU на основной поток. false — старый путь (маска читается в Uint8Array каждый раз).
+  // default: true
+  gpuMask?: boolean
+}
+
+// Маска как текстура WebGL2: confidence человека в канале R (0..1), начало координат — как у
+// текстур, загруженных с UNPACK_FLIP_Y_WEBGL. Живёт до следующей сегментации этого провайдера.
+export interface SegmentationGpuMask {
+  gl: WebGL2RenderingContext
+  texture: WebGLTexture
 }
 
 export interface SegmentationResult {
-  // 0 = человек (foreground), 255 = фон (background)
+  // 0 = человек (foreground), 255 = фон (background).
+  // Если есть gpuMask — считается лениво при первом чтении (чтение с GPU, дорого)
   maskData: Uint8Array
   width: number
   height: number
   timestamp: number
+  // Есть, когда маска осталась на GPU (встроенный провайдер, gpuMask !== false)
+  gpuMask?: SegmentationGpuMask
 }
+
+// Кадр для сегментации без копирования в ImageData
+export type SegmentationSource = HTMLCanvasElement | OffscreenCanvas | HTMLVideoElement | ImageBitmap | VideoFrame
+
+type ConfidenceMask = {
+  getAsFloat32Array(): Float32Array
+  getAsWebGLTexture(): WebGLTexture
+  hasWebGLTexture(): boolean
+  readonly canvas?: HTMLCanvasElement | OffscreenCanvas
+  width: number
+  height: number
+}
+
+type HeldResult = { close(): void }
 
 function getDefaultConfig(): Required<SegmentationConfig> {
   const isMobile = DeviceDetector.isMobile()
@@ -27,7 +55,14 @@ function getDefaultConfig(): Required<SegmentationConfig> {
     wasmPath: '/mediapipe/wasm',
     modelPath: '/mediapipe/models/selfie_segmenter.tflite',
     disableOnMobile: false,
+    gpuMask: true,
   }
+}
+
+function createGlCanvas(): HTMLCanvasElement | OffscreenCanvas | null {
+  if (typeof OffscreenCanvas !== 'undefined') return new OffscreenCanvas(1, 1)
+  if (typeof document !== 'undefined') return document.createElement('canvas')
+  return null
 }
 
 export class SegmentationService {
@@ -40,6 +75,12 @@ export class SegmentationService {
   private isMobile = false
   private isIOS = false
   private pendingSegmentations = 0
+
+  // GPU-путь: свой canvas для WebGL-контекста MediaPipe, в нём же идёт композиция эффектов
+  private glCanvas: HTMLCanvasElement | OffscreenCanvas | null = null
+  private gl: WebGL2RenderingContext | null = null
+  // Результат прошлой сегментации держим до следующей: его текстура используется в кадрах-кэшах
+  private heldResult: HeldResult | null = null
 
   async initialize(config: SegmentationConfig = {}): Promise<void> {
     if (this.initialized) {
@@ -67,15 +108,29 @@ export class SegmentationService {
 
       const vision = (await Promise.race([visionPromise, timeoutPromise])) as any
 
-      this.segmenter = await ImageSegmenter.createFromOptions(vision, {
+      const options = {
         baseOptions: {
           modelAssetPath: finalConfig.modelPath,
           delegate: finalConfig.delegate,
         },
-        runningMode: 'VIDEO',
+        runningMode: 'VIDEO' as const,
         outputCategoryMask: false,
         outputConfidenceMasks: true,
-      })
+      }
+
+      const glCanvas = finalConfig.gpuMask ? this.createSharedContext() : null
+      if (glCanvas) {
+        try {
+          this.segmenter = await ImageSegmenter.createFromOptions(vision, { ...options, canvas: glCanvas })
+        } catch (error) {
+          console.warn('[SegmentationService] GPU mask path unavailable, fallback to CPU mask:', error)
+          this.releaseSharedContext()
+        }
+      }
+
+      if (!this.segmenter) {
+        this.segmenter = await ImageSegmenter.createFromOptions(vision, options)
+      }
 
       this.initialized = true
     } catch (error) {
@@ -142,7 +197,45 @@ export class SegmentationService {
     }
   }
 
+  // Сегментация прямо из canvas/видео/VideoFrame: без getImageData/putImageData.
+  // На GPU-пути маска не читается на CPU (maskData — ленивое поле)
+  segmentSource(source: SegmentationSource, width: number, height: number, timestamp: number): SegmentationResult {
+    if (!this.segmenter || !this.initialized || this.initializationError) {
+      return this.getEmptyMask(width, height, timestamp)
+    }
+
+    try {
+      this.lastTimestamp = Math.max(this.lastTimestamp + 1, Math.floor(timestamp))
+      const result = this.segmenter.segmentForVideo(source, this.lastTimestamp)
+      const confidenceMasks = result.confidenceMasks
+
+      if (!confidenceMasks || confidenceMasks.length === 0) {
+        result.close()
+        return this.getEmptyMask(width, height, timestamp)
+      }
+
+      const mask = confidenceMasks[0] as unknown as ConfidenceMask
+
+      if (!this.gl) {
+        const maskData = this.convertConfidenceMask(mask, width, height)
+        result.close()
+        return { maskData, width, height, timestamp }
+      }
+
+      // Прошлую маску освобождаем только сейчас: до этого её текстура нужна кадрам из кэша
+      this.releaseHeldResult()
+      this.heldResult = result
+
+      return this.createGpuResult(result, mask, this.gl, width, height, timestamp)
+    } catch (error) {
+      console.error('[SegmentationService] Segmentation error:', error)
+      return this.getEmptyMask(width, height, timestamp)
+    }
+  }
+
   dispose(): void {
+    this.releaseHeldResult()
+
     if (this.segmenter) {
       try {
         this.segmenter.close()
@@ -154,6 +247,7 @@ export class SegmentationService {
 
     this.canvas = null
     this.ctx = null
+    this.releaseSharedContext()
     this.initialized = false
     this.initializationError = null
     this.pendingSegmentations = 0
@@ -165,6 +259,87 @@ export class SegmentationService {
 
   getInitializationError(): Error | null {
     return this.initializationError
+  }
+
+  private createSharedContext(): HTMLCanvasElement | OffscreenCanvas | null {
+    const canvas = createGlCanvas()
+    if (!canvas) return null
+
+    // Контекст создаём сами: MediaPipe возьмёт этот же (getContext вернёт существующий).
+    // preserveDrawingBuffer — чтобы кадр композиции можно было скопировать в 2D-canvas в любой момент
+    const gl = canvas.getContext('webgl2', {
+      alpha: true,
+      premultipliedAlpha: false,
+      preserveDrawingBuffer: true,
+      antialias: false,
+      depth: false,
+      stencil: false,
+    }) as WebGL2RenderingContext | null
+
+    if (!gl) return null
+
+    this.glCanvas = canvas
+    this.gl = gl
+    return canvas
+  }
+
+  private releaseSharedContext(): void {
+    this.gl = null
+    this.glCanvas = null
+  }
+
+  private releaseHeldResult(): void {
+    if (!this.heldResult) return
+    try {
+      this.heldResult.close()
+    } catch {
+      // результат уже закрыт вместе с сегментером
+    }
+    this.heldResult = null
+  }
+
+  private createGpuResult(
+    held: HeldResult,
+    mask: ConfidenceMask,
+    gl: WebGL2RenderingContext,
+    width: number,
+    height: number,
+    timestamp: number,
+  ): SegmentationResult {
+    // Маска должна жить в нашем контексте; иначе — обычное чтение
+    if (mask.canvas !== this.glCanvas) {
+      const maskData = this.convertConfidenceMask(mask, width, height)
+      return { maskData, width, height, timestamp }
+    }
+
+    const texture = mask.getAsWebGLTexture()
+    let cached: Uint8Array | null = null
+
+    const result: SegmentationResult = {
+      width,
+      height,
+      timestamp,
+      gpuMask: { gl, texture },
+      maskData: undefined as unknown as Uint8Array,
+    }
+
+    // Uint8Array — только по требованию (кастомный эффект читает segmentationMask)
+    Object.defineProperty(result, 'maskData', {
+      enumerable: true,
+      configurable: true,
+      get: () => {
+        if (cached) return cached
+        if (this.heldResult !== held) {
+          // Маска уже освобождена — отдаём «весь кадр фон»
+          cached = this.getEmptyMask(width, height, timestamp).maskData
+        } else {
+          cached = this.convertConfidenceMask(mask, width, height)
+        }
+        return cached
+      },
+    })
+
+    return result
   }
 
   private getEmptyMask(width: number, height: number, timestamp: number): SegmentationResult {
@@ -197,7 +372,6 @@ export class SegmentationService {
   private convertConfidenceMask(
     confidenceMask: {
       getAsFloat32Array(): Float32Array
-      getAsUint8Array?(): Uint8Array
       width: number
       height: number
     },

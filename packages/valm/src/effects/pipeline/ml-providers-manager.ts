@@ -1,6 +1,6 @@
 import { DeviceDetector } from '../../core'
 import { FaceMeshWorkerResult } from '../providers/face-mesh.client'
-import { SegmentationResult } from '../providers/segmentation.client'
+import { SegmentationResult, SegmentationSource } from '../providers/segmentation.client'
 import { EffectFeature, IMLProvider, IVideoEffect } from '../types'
 
 export interface MLDetectionResult {
@@ -75,6 +75,27 @@ export class MLProvidersManager {
     const [segmentation, faceMesh] = await Promise.all([this.detectSegmentation(imageData, timestamp), this.detectFaceMesh(imageData, timestamp)])
 
     return { segmentation, faceMesh }
+  }
+
+  // Можно ли обойтись без ImageData: нужна только сегментация, и провайдер умеет брать кадр напрямую
+  canDetectFromSource(): boolean {
+    if (this.requiredFeatures.has(EffectFeature.FACE_MESH)) return false
+    if (!this.requiredFeatures.has(EffectFeature.SEGMENTATION)) return false
+    return typeof this.segmentationProvider?.detectSource === 'function'
+  }
+
+  async detectFromSource(source: SegmentationSource, width: number, height: number, timestamp: number): Promise<MLDetectionResult> {
+    const provider = this.segmentationProvider
+    if (!provider?.detectSource || !provider.isReady()) {
+      return { segmentation: null, faceMesh: null }
+    }
+
+    try {
+      const segmentation = await provider.detectSource(source, width, height, timestamp)
+      return { segmentation, faceMesh: null }
+    } catch {
+      return { segmentation: provider.getLastResult(), faceMesh: null }
+    }
   }
 
   wouldReturnCache(): boolean {
